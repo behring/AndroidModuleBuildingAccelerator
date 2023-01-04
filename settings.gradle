@@ -1,0 +1,21 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        google()
+        mavenCentral()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+rootProject.name = "MultiModuleBuildFaster"
+include ':app:sg'
+include ':app:hk'
+include ':feature:payments'
+include ':feature:home'
+include ':infra:network'
+include ':infra:analytics'
