@@ -19,8 +19,8 @@ class ModuleBuildingFaster : Plugin<Project> {
                 if (isAppProject(project)) {
                     appVariantNames = getAppVariantNames(project)
                 } else if (isAndroidLibraryProject(project)) {
-                    project.tasks.getByName("build").doFirst {
-                        println("build doFirst: ${project.name}")
+                    project.tasks.getByName("preBuild").doFirst {
+                        println("preBuild doFirst: ${project.name}")
                     }
 
                     if (appVariantNames.isEmpty()) println("No variants information collected.")
