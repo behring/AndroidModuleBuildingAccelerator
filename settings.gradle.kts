@@ -13,11 +13,11 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "MultiModuleBuildFaster"
-include(":app")
 include(":feature:payments")
 include(":feature:home")
 include(":infra:network")
 include(":infra:analytics")
+include(":app")
 
 enableFeaturePreview("VERSION_CATALOGS")
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")

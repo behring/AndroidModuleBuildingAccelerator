@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "cn.behring.home"
-    compileSdk = 32
+    compileSdk = 33
 
     defaultConfig {
         minSdk = 21
