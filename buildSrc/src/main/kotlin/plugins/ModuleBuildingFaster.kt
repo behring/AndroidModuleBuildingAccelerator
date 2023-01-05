@@ -11,9 +11,10 @@ import org.gradle.configurationcache.extensions.capitalized
 import java.io.File
 
 class ModuleBuildingFaster : Plugin<Project> {
+    private lateinit var appVariantNames: List<String>
+
     override fun apply(target: Project) {
         target.gradle.projectsEvaluated {
-            var appVariantNames = emptyList<String>()
 
             target.subprojects.forEach { project ->
                 if (isAppProject(project)) {
@@ -36,9 +37,22 @@ class ModuleBuildingFaster : Plugin<Project> {
 
                 getImplementationConfiguration(project)?.dependencies?.forEach { dependency ->
                     if (dependency is ProjectDependency) {
-                        println(dependency.name)
+                        println("$project depends on ${dependency.dependencyProject}")
+                        convertProjectDependencyToArtifactsDependency(project, dependency.dependencyProject)
                     }
                 }
+
+                getImplementationConfiguration(project)?.dependencies?.removeIf {
+                    it is ProjectDependency
+                }
+            }
+        }
+    }
+
+    private fun convertProjectDependencyToArtifactsDependency(project: Project, dependencyProject: Project) {
+        appVariantNames.forEach { appVariantName ->
+            getOutputFile(dependencyProject, appVariantName)?.let { artifact ->
+                project.dependencies.add("${appVariantName}Implementation", project.files(artifact.path))
             }
         }
     }
