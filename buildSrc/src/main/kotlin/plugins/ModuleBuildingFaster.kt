@@ -12,23 +12,38 @@ import java.io.File
 
 class ModuleBuildingFaster : Plugin<Project> {
     private lateinit var appVariantNames: List<String>
+    private var artifacts: List<File> = emptyList()
 
     override fun apply(target: Project) {
+        val cacheArtifactsRootDir = "${target.projectDir}/.gradle/artifacts"
+        println("Artifacts directory: $cacheArtifactsRootDir")
+        artifacts = collectExistArtifacts(cacheArtifactsRootDir)
+
         target.gradle.projectsEvaluated {
+            val isExistDir = checkAndCreateDirs(cacheArtifactsRootDir)
+            if (!isExistDir) {
+                println("Dir $cacheArtifactsRootDir create failed, ModuleBuildingFaster plugin stop work.")
+                return@projectsEvaluated
+            }
 
             target.subprojects.forEach { project ->
                 if (isAppProject(project)) {
                     appVariantNames = getAppVariantNames(project)
                 } else if (isAndroidLibraryProject(project)) {
-                    project.tasks.getByName("preBuild").doFirst {
-                        println("preBuild doFirst: ${project.name}")
-                    }
-
                     if (appVariantNames.isEmpty()) println("No variants information collected.")
 
                     appVariantNames.forEach { variantName ->
                         project.tasks.getByName("assemble${variantName.capitalized()}").doLast {
-                            println(getOutputFile(project, variantName)?.absolutePath)
+                            getOutputFile(project, variantName)?.let {
+                                val destinationFile =
+                                    File("$cacheArtifactsRootDir/${project.name}/${it.name}")
+                                if (destinationFile.exists()) destinationFile.delete()
+
+                                it.copyTo(File("$cacheArtifactsRootDir/${project.name}/${it.name}"))
+                                    .run {
+                                        println("Cached aar file, path: ${absolutePath}, corresponding to variant: $variantName")
+                                    }
+                            }
                         }
                     }
                 } else {
@@ -38,21 +53,47 @@ class ModuleBuildingFaster : Plugin<Project> {
                 getImplementationConfiguration(project)?.dependencies?.forEach { dependency ->
                     if (dependency is ProjectDependency) {
                         println("$project depends on ${dependency.dependencyProject}")
-                        convertProjectDependencyToArtifactsDependency(project, dependency.dependencyProject)
+                        if (isExistArtifact(dependency.dependencyProject)) {
+                            println("Start converting $project dependency to artifact")
+                            convertProjectDependencyToArtifactsDependency(
+                                project,
+                                dependency.dependencyProject
+                            )
+                        }
                     }
                 }
 
                 getImplementationConfiguration(project)?.dependencies?.removeIf {
-                    it is ProjectDependency
+                    (it is ProjectDependency) && isExistArtifact(it.dependencyProject)
                 }
             }
         }
     }
 
-    private fun convertProjectDependencyToArtifactsDependency(project: Project, dependencyProject: Project) {
+    private fun collectExistArtifacts(artifactsRootDir: String) =
+        File(artifactsRootDir).walkTopDown().filter { it.isFile && it.extension == "aar" }.toList()
+
+    private fun checkAndCreateDirs(path: String): Boolean {
+        val file = File(path)
+        if (!file.exists() || !file.isDirectory) return file.mkdirs()
+        return true
+    }
+
+    private fun isExistArtifact(project: Project) =
+        artifacts.any { it.name.contains(project.name, true) }
+
+    private fun convertProjectDependencyToArtifactsDependency(
+        project: Project,
+        dependencyProject: Project
+    ) {
         appVariantNames.forEach { appVariantName ->
-            getOutputFile(dependencyProject, appVariantName)?.let { artifact ->
-                project.dependencies.add("${appVariantName}Implementation", project.files(artifact.path))
+            artifacts.firstOrNull {
+                it.name.contains("${dependencyProject.name}-${appVariantName}")
+            }?.let { artifact ->
+                project.dependencies.add(
+                    "${appVariantName}Implementation",
+                    project.files(artifact.path)
+                )
             }
         }
     }
@@ -62,9 +103,7 @@ class ModuleBuildingFaster : Plugin<Project> {
 
     private fun getOutputFile(project: Project, variantName: String): File? {
         return project.extensions.findByType(LibraryExtension::class.java)?.libraryVariants?.first {
-            it.name.equals(
-                variantName
-            )
+            it.name.equals(variantName)
         }?.outputs?.first()?.outputFile
     }
 
