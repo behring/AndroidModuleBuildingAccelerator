@@ -52,6 +52,8 @@ android {
 dependencies {
     implementation(projects.feature.home)
     implementation(projects.feature.payments)
+    implementation(projects.infra.network)
+    implementation(projects.infra.analytics)
 
     implementation("androidx.activity:activity-compose:1.6.1")
     implementation("androidx.compose.ui:ui:1.3.2")
