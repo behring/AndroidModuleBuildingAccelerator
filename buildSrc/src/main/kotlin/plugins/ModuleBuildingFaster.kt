@@ -7,7 +7,6 @@ import org.gradle.kotlin.dsl.get
 import com.android.build.gradle.AppExtension
 import com.android.build.gradle.LibraryExtension
 import org.gradle.api.artifacts.ProjectDependency
-import org.gradle.api.execution.TaskExecutionGraphListener
 import org.gradle.configurationcache.extensions.capitalized
 import java.io.File
 
@@ -17,7 +16,12 @@ class ModuleBuildingFaster : Plugin<Project> {
 
     override fun apply(target: Project) {
         target.gradle.addListener(TimingsListener())
+        addMavenPublishPluginToSubProject(target)
         convertDependencyConfiguration(target)
+    }
+
+    private fun addMavenPublishPluginToSubProject(target: Project) {
+        target.subprojects.forEach { it.plugins.apply("maven-publish") }
     }
 
     private fun convertDependencyConfiguration(target: Project) {
