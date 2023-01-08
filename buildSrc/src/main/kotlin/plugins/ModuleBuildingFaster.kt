@@ -7,6 +7,8 @@ import org.gradle.kotlin.dsl.get
 import com.android.build.gradle.AppExtension
 import com.android.build.gradle.LibraryExtension
 import org.gradle.api.artifacts.ProjectDependency
+import org.gradle.api.publish.PublishingExtension
+import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.configurationcache.extensions.capitalized
 import java.io.File
 
@@ -43,9 +45,13 @@ class ModuleBuildingFaster : Plugin<Project> {
                     if (appVariantNames.isEmpty()) println("No variants information collected.")
 
                     appVariantNames.forEach { variantName ->
+                        configDependencyTaskForMavenPublishTasks(project, variantName)
+                        configMavenPublishPluginForLibraryWithAppVariant(project, variantName)
+
                         project.tasks.getByName("assemble${variantName.capitalized()}").doLast {
                             getOutputFile(project, variantName)?.let {
-                                val destinationFile = copyArtifacts(cacheArtifactsRootDir, project, it)
+                                val destinationFile =
+                                    copyArtifacts(cacheArtifactsRootDir, project, it)
                                 println("Cached aar file, path: ${destinationFile.absolutePath}, corresponding to variant: $variantName")
                             }
                         }
@@ -73,6 +79,24 @@ class ModuleBuildingFaster : Plugin<Project> {
                 }
             }
         }
+    }
+
+    private fun configMavenPublishPluginForLibraryWithAppVariant(project: Project, variantName: String) {
+        project.extensions.getByType(PublishingExtension::class.java)
+            .publications.maybeCreate(project.name + variantName.capitalized(), MavenPublication::class.java).run {
+                groupId = project.group.toString()
+                artifactId = "${project.name}-$variantName"
+                version = project.version.toString()
+                artifact(getOutputFile(project, variantName))
+            }
+    }
+
+    private fun configDependencyTaskForMavenPublishTasks(project: Project, variantName: String) {
+       project.tasks.whenTaskAdded {
+           if (name.startsWith("publish${project.name.capitalized()}${variantName.capitalized()}PublicationTo")) {
+               dependsOn("assemble${variantName.capitalized()}")
+           }
+       }
     }
 
     private fun copyArtifacts(

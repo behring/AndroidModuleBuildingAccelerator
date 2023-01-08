@@ -3,13 +3,16 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+version = "1.0.0"
+group = "cn.behring.multimodulebuildfaster"
+
 android {
     namespace = "cn.behring.home"
     compileSdk = 33
 
     defaultConfig {
         minSdk = 21
-        targetSdk = 32
+        targetSdk = 33
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
