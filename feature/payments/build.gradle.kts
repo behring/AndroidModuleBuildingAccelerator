@@ -4,7 +4,6 @@ plugins {
 }
 
 version = "1.0.0"
-group = "cn.behring.multimodulebuildfaster"
 
 android {
     namespace = "cn.behring.payments"

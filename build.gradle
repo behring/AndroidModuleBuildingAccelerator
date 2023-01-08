@@ -1,7 +1,6 @@
 buildscript {
     repositories {
         google()
-        mavenLocal()
     }
 }// Top-level build file where you can add configuration options common to all sub-projects/modules.
 plugins {
@@ -9,3 +8,5 @@ plugins {
     id 'com.android.library' apply false
     id "ModuleBuildingFaster"
 }
+
+group = "cn.behring.multimodulebuildfaster"

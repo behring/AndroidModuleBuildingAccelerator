@@ -13,7 +13,6 @@ import org.gradle.configurationcache.extensions.capitalized
 import java.io.File
 
 class ModuleBuildingFaster : Plugin<Project> {
-    private lateinit var appVariantNames: List<String>
     private var artifacts: List<File> = emptyList()
 
     override fun apply(target: Project) {
@@ -27,53 +26,40 @@ class ModuleBuildingFaster : Plugin<Project> {
     }
 
     private fun convertDependencyConfiguration(target: Project) {
-        val cacheArtifactsRootDir = "${target.projectDir}/.gradle/artifacts"
-        println("Artifacts directory: $cacheArtifactsRootDir")
-        artifacts = collectExistArtifacts(cacheArtifactsRootDir)
-
         target.gradle.projectsEvaluated {
-            val isExistDir = checkAndCreateDirs(cacheArtifactsRootDir)
-            if (!isExistDir) {
-                println("Dir $cacheArtifactsRootDir create failed, ModuleBuildingFaster plugin stop work.")
-                return@projectsEvaluated
-            }
+            val rootProjectMavenLocalDir = "${System.getProperties()["user.home"]}/.m2/repository/${target.groupPath()}"
+            println("Artifacts directory: $rootProjectMavenLocalDir")
+            artifacts = collectExistArtifacts(rootProjectMavenLocalDir)
+            lateinit var appVariantNames: List<String>
 
             target.subprojects.forEach { project ->
                 if (isAppProject(project)) {
                     appVariantNames = getAppVariantNames(project)
-                } else if (isAndroidLibraryProject(project)) {
-                    if (appVariantNames.isEmpty()) println("No variants information collected.")
-
-                    appVariantNames.forEach { variantName ->
-                        configDependencyTaskForMavenPublishTasks(project, variantName)
-                        configMavenPublishPluginForLibraryWithAppVariant(project, variantName)
-
-                        project.tasks.getByName("assemble${variantName.capitalized()}").doLast {
-                            getOutputFile(project, variantName)?.let {
-                                val destinationFile =
-                                    copyArtifacts(cacheArtifactsRootDir, project, it)
-                                println("Cached aar file, path: ${destinationFile.absolutePath}, corresponding to variant: $variantName")
-                            }
-                        }
-                    }
-
                     getImplementationConfiguration(project)?.dependencies?.forEach { dependency ->
                         if (dependency is ProjectDependency) {
                             println("$project depends on ${dependency.dependencyProject}")
-                            if (isExistArtifact(dependency.dependencyProject)) {
-                                println("Start converting $project dependency to artifact")
+                            if (isExistAllAppVariantArtifactInMavenLocalRepo(dependency.dependencyProject, appVariantNames)) {
+                                println("Start converting project dependency to artifact with ${dependency.dependencyProject} in $project")
                                 convertProjectDependencyToArtifactsDependency(
                                     project,
-                                    dependency.dependencyProject
+                                    dependency.dependencyProject,
+                                    appVariantNames
                                 )
                             }
                         }
                     }
 
                     getImplementationConfiguration(project)?.dependencies?.removeIf {
-                        (it is ProjectDependency) && isExistArtifact(it.dependencyProject)
+                        (it is ProjectDependency) && isExistAllAppVariantArtifactInMavenLocalRepo(it.dependencyProject, appVariantNames)
                     }
 
+                } else if (isAndroidLibraryProject(project)) {
+                    if (appVariantNames.isEmpty()) println("No variants information collected.")
+
+                    appVariantNames.forEach { variantName ->
+                        configDependencyTaskForMavenPublishTasks(project, variantName)
+                        configMavenPublishPluginForLibraryWithAppVariant(project, variantName)
+                    }
                 } else {
                     println("This project is not a app or android module. project name: ${project.name}")
                 }
@@ -81,10 +67,12 @@ class ModuleBuildingFaster : Plugin<Project> {
         }
     }
 
+    private fun Project.groupPath() = group.toString().replace(".","/")
+
     private fun configMavenPublishPluginForLibraryWithAppVariant(project: Project, variantName: String) {
         project.extensions.getByType(PublishingExtension::class.java)
             .publications.maybeCreate(project.name + variantName.capitalized(), MavenPublication::class.java).run {
-                groupId = project.group.toString()
+                groupId = project.rootProject.group.toString()
                 artifactId = "${project.name}-$variantName"
                 version = project.version.toString()
                 artifact(getOutputFile(project, variantName))
@@ -99,44 +87,27 @@ class ModuleBuildingFaster : Plugin<Project> {
        }
     }
 
-    private fun copyArtifacts(
-        cacheArtifactsRootDir: String,
-        project: Project,
-        sourceFile: File
-    ): File {
-        val destinationFile =
-            File("$cacheArtifactsRootDir/${project.name}/${sourceFile.name}")
-        if (destinationFile.exists()) destinationFile.delete()
-        sourceFile.copyTo(destinationFile)
-        return destinationFile
-    }
+    private fun collectExistArtifacts(rootProjectMavenLocalDir: String) =
+        File(rootProjectMavenLocalDir).walkTopDown().filter { it.isFile && it.extension == "aar" }.toList()
 
 
-    private fun collectExistArtifacts(artifactsRootDir: String) =
-        File(artifactsRootDir).walkTopDown().filter { it.isFile && it.extension == "aar" }.toList()
-
-    private fun checkAndCreateDirs(path: String): Boolean {
-        val file = File(path)
-        if (!file.exists() || !file.isDirectory) return file.mkdirs()
-        return true
-    }
-
-    private fun isExistArtifact(project: Project) =
-        artifacts.any { it.name.contains(project.name, true) }
+    private fun isExistAllAppVariantArtifactInMavenLocalRepo(project: Project, appVariantNames: List<String>) =
+        appVariantNames.all { variantName ->
+            artifacts.any { artifact -> artifact.name.contains("${project.name}-${variantName}-${project.version}", true) }.apply {
+                if (!this) println("artifact ${project.name}-${variantName}-${project.version}.aar is not exists in MavenLocal repository. can't convert to artifact dependency.")
+            }
+        }
 
     private fun convertProjectDependencyToArtifactsDependency(
         project: Project,
-        dependencyProject: Project
+        dependencyProject: Project,
+        appVariantNames: List<String>
     ) {
         appVariantNames.forEach { appVariantName ->
-            artifacts.firstOrNull {
-                it.name.contains("${dependencyProject.name}-${appVariantName}")
-            }?.let { artifact ->
-                project.dependencies.add(
-                    "${appVariantName}CompileOnly",
-                    project.files(artifact.path)
-                )
-            }
+            project.dependencies.add(
+                "${appVariantName}Implementation",
+               "${dependencyProject.rootProject.group}:${dependencyProject.name}-$appVariantName:${dependencyProject.version}"
+            )
         }
     }
 
