@@ -22,11 +22,36 @@ class ModuleBuildingFaster : Plugin<Project> {
 
     private var artifacts: List<File> = emptyList()
     private var appVariantNames: List<String> = emptyList()
+    private var notDevelopedProjects: List<Project> = emptyList()
 
     override fun apply(target: Project) {
         target.gradle.addListener(TimingsListener())
+        notDevelopedProjects = getNotDevelopedProjects(target)
         addMavenPublishPluginToSubProject(target)
         convertDependencyConfiguration(target)
+    }
+
+
+    private fun setEmptySourceSetsForNotDevelopedProject(project: Project) {
+        if (notDevelopedProjects.contains(project) && isAndroidLibraryProject(project)) {
+            project.tasks.forEach { it.enabled = false }
+            println("disable tasks for ${project.path}")
+        }
+    }
+
+    private fun getNotDevelopedProjects(target: Project): List<Project> {
+        return getProjects(target).filterNot {
+            getCurrentDevelopingProjectPaths(target.rootDir).contains(
+                it.path
+            )
+        }
+    }
+
+    private fun getCurrentDevelopingProjectPaths(rootDir: File): List<String> {
+        return java.util.Properties().run {
+            load(File(rootDir.absolutePath + "/local.properties").inputStream())
+            getProperty("currentDevelopingProjectPaths").split(",")
+        }
     }
 
     private fun addMavenPublishPluginToSubProject(target: Project) {
@@ -42,7 +67,7 @@ class ModuleBuildingFaster : Plugin<Project> {
             getProjects(target).forEach { project ->
                 if (isAppProject(project)) {
                     appVariantNames = getAppVariantNames(project)
-                    convertProjectDependencyToArtifactDependenciesForAllAndroidLibrary(project)
+                    convertProjectDependencyToArtifactDependenciesForProject(project)
                     removeProjectDependencies(project)
                 } else if (isAndroidLibraryProject(project)) {
                     if (appVariantNames.isEmpty()) println("No variants information collected.")
@@ -50,6 +75,14 @@ class ModuleBuildingFaster : Plugin<Project> {
                         configDependencyTaskForMavenPublishTasks(project, variantName)
                         configMavenPublishPluginForLibraryWithAppVariant(project, variantName)
                     }
+
+                    if (!isNotDevelopedProject(project)) {
+                        convertProjectDependencyToArtifactDependenciesForProject(project)
+                        removeProjectDependencies(project)
+                    }
+
+                    setEmptySourceSetsForNotDevelopedProject(project)
+
                 } else {
                     println("This project is not a app or android module. project name: ${project.name}")
                 }
@@ -57,7 +90,8 @@ class ModuleBuildingFaster : Plugin<Project> {
         }
     }
 
-    private fun getProjects(target: Project) = target.subprojects.filterNot { SKIP_PARENT_PROJECT_PATH.contains(it.path) }
+    private fun getProjects(target: Project) =
+        target.subprojects.filterNot { SKIP_PARENT_PROJECT_PATH.contains(it.path) }
 
     private fun removeProjectDependencies(project: Project) {
         getImplementationConfiguration(project)?.dependencies?.removeIf {
@@ -65,7 +99,7 @@ class ModuleBuildingFaster : Plugin<Project> {
         }
     }
 
-    private fun convertProjectDependencyToArtifactDependenciesForAllAndroidLibrary(project: Project) {
+    private fun convertProjectDependencyToArtifactDependenciesForProject(project: Project) {
         getImplementationConfiguration(project)?.dependencies?.forEach { dependency ->
             if (dependency is ProjectDependency) {
                 println("$project depends on ${dependency.dependencyProject}")
@@ -138,6 +172,9 @@ class ModuleBuildingFaster : Plugin<Project> {
             )
         }
     }
+
+
+    private fun isNotDevelopedProject(project: Project) = notDevelopedProjects.contains(project)
 
     private fun isAndroidLibraryProject(project: Project) =
         project.extensions.findByType(LibraryExtension::class.java) != null
