@@ -13,7 +13,15 @@ import org.gradle.configurationcache.extensions.capitalized
 import java.io.File
 
 class ModuleBuildingFaster : Plugin<Project> {
+    companion object {
+        val SKIP_PARENT_PROJECT_PATH = listOf(
+            ":feature",
+            ":infra"
+        )
+    }
+
     private var artifacts: List<File> = emptyList()
+    private var appVariantNames: List<String> = emptyList()
 
     override fun apply(target: Project) {
         target.gradle.addListener(TimingsListener())
@@ -22,40 +30,22 @@ class ModuleBuildingFaster : Plugin<Project> {
     }
 
     private fun addMavenPublishPluginToSubProject(target: Project) {
-        target.subprojects.forEach { it.plugins.apply("maven-publish") }
+        getProjects(target).forEach { it.plugins.apply("maven-publish") }
     }
 
     private fun convertDependencyConfiguration(target: Project) {
         target.gradle.projectsEvaluated {
-            val rootProjectMavenLocalDir = "${System.getProperties()["user.home"]}/.m2/repository/${target.groupPath()}"
+            val rootProjectMavenLocalDir = getMavenLocalDirForRootProject(target)
             println("Artifacts directory: $rootProjectMavenLocalDir")
             artifacts = collectExistArtifacts(rootProjectMavenLocalDir)
-            lateinit var appVariantNames: List<String>
 
-            target.subprojects.forEach { project ->
+            getProjects(target).forEach { project ->
                 if (isAppProject(project)) {
                     appVariantNames = getAppVariantNames(project)
-                    getImplementationConfiguration(project)?.dependencies?.forEach { dependency ->
-                        if (dependency is ProjectDependency) {
-                            println("$project depends on ${dependency.dependencyProject}")
-                            if (isExistAllAppVariantArtifactInMavenLocalRepo(dependency.dependencyProject, appVariantNames)) {
-                                println("Start converting project dependency to artifact with ${dependency.dependencyProject} in $project")
-                                convertProjectDependencyToArtifactsDependency(
-                                    project,
-                                    dependency.dependencyProject,
-                                    appVariantNames
-                                )
-                            }
-                        }
-                    }
-
-                    getImplementationConfiguration(project)?.dependencies?.removeIf {
-                        (it is ProjectDependency) && isExistAllAppVariantArtifactInMavenLocalRepo(it.dependencyProject, appVariantNames)
-                    }
-
+                    convertProjectDependencyToArtifactDependenciesForAllAndroidLibrary(project)
+                    removeProjectDependencies(project)
                 } else if (isAndroidLibraryProject(project)) {
                     if (appVariantNames.isEmpty()) println("No variants information collected.")
-
                     appVariantNames.forEach { variantName ->
                         configDependencyTaskForMavenPublishTasks(project, variantName)
                         configMavenPublishPluginForLibraryWithAppVariant(project, variantName)
@@ -67,11 +57,44 @@ class ModuleBuildingFaster : Plugin<Project> {
         }
     }
 
-    private fun Project.groupPath() = group.toString().replace(".","/")
+    private fun getProjects(target: Project) = target.subprojects.filterNot { SKIP_PARENT_PROJECT_PATH.contains(it.path) }
 
-    private fun configMavenPublishPluginForLibraryWithAppVariant(project: Project, variantName: String) {
+    private fun removeProjectDependencies(project: Project) {
+        getImplementationConfiguration(project)?.dependencies?.removeIf {
+            (it is ProjectDependency) && isExistAllAppVariantArtifactInMavenLocalRepo(it.dependencyProject)
+        }
+    }
+
+    private fun convertProjectDependencyToArtifactDependenciesForAllAndroidLibrary(project: Project) {
+        getImplementationConfiguration(project)?.dependencies?.forEach { dependency ->
+            if (dependency is ProjectDependency) {
+                println("$project depends on ${dependency.dependencyProject}")
+                if (isExistAllAppVariantArtifactInMavenLocalRepo(dependency.dependencyProject)) {
+                    println("Start converting project dependency to artifact with ${dependency.dependencyProject} in $project")
+                    convertProjectDependencyToArtifactDependencies(
+                        project,
+                        dependency.dependencyProject
+                    )
+                }
+            }
+        }
+    }
+
+    private fun getMavenLocalDirForRootProject(target: Project): String {
+        return "${System.getProperties()["user.home"]}/.m2/repository/${target.groupPath()}"
+    }
+
+    private fun Project.groupPath() = group.toString().replace(".", "/")
+
+    private fun configMavenPublishPluginForLibraryWithAppVariant(
+        project: Project,
+        variantName: String
+    ) {
         project.extensions.getByType(PublishingExtension::class.java)
-            .publications.maybeCreate(project.name + variantName.capitalized(), MavenPublication::class.java).run {
+            .publications.maybeCreate(
+                project.name + variantName.capitalized(),
+                MavenPublication::class.java
+            ).run {
                 groupId = project.rootProject.group.toString()
                 artifactId = "${project.name}-$variantName"
                 version = project.version.toString()
@@ -80,33 +103,38 @@ class ModuleBuildingFaster : Plugin<Project> {
     }
 
     private fun configDependencyTaskForMavenPublishTasks(project: Project, variantName: String) {
-       project.tasks.whenTaskAdded {
-           if (name.startsWith("publish${project.name.capitalized()}${variantName.capitalized()}PublicationTo")) {
-               dependsOn("assemble${variantName.capitalized()}")
-           }
-       }
+        project.tasks.whenTaskAdded {
+            if (name.startsWith("publish${project.name.capitalized()}${variantName.capitalized()}PublicationTo")) {
+                dependsOn("${project.path}:assemble${variantName.capitalized()}")
+            }
+        }
     }
 
     private fun collectExistArtifacts(rootProjectMavenLocalDir: String) =
-        File(rootProjectMavenLocalDir).walkTopDown().filter { it.isFile && it.extension == "aar" }.toList()
+        File(rootProjectMavenLocalDir).walkTopDown().filter { it.isFile && it.extension == "aar" }
+            .toList()
 
 
-    private fun isExistAllAppVariantArtifactInMavenLocalRepo(project: Project, appVariantNames: List<String>) =
+    private fun isExistAllAppVariantArtifactInMavenLocalRepo(project: Project) =
         appVariantNames.all { variantName ->
-            artifacts.any { artifact -> artifact.name.contains("${project.name}-${variantName}-${project.version}", true) }.apply {
+            artifacts.any { artifact ->
+                artifact.name.contains(
+                    "${project.name}-${variantName}-${project.version}",
+                    true
+                )
+            }.apply {
                 if (!this) println("artifact ${project.name}-${variantName}-${project.version}.aar is not exists in MavenLocal repository. can't convert to artifact dependency.")
             }
         }
 
-    private fun convertProjectDependencyToArtifactsDependency(
+    private fun convertProjectDependencyToArtifactDependencies(
         project: Project,
-        dependencyProject: Project,
-        appVariantNames: List<String>
+        dependencyProject: Project
     ) {
         appVariantNames.forEach { appVariantName ->
             project.dependencies.add(
                 "${appVariantName}Implementation",
-               "${dependencyProject.rootProject.group}:${dependencyProject.name}-$appVariantName:${dependencyProject.version}"
+                "${dependencyProject.rootProject.group}:${dependencyProject.name}-$appVariantName:${dependencyProject.version}"
             )
         }
     }
