@@ -18,6 +18,7 @@ class ModuleBuildingFaster : Plugin<Project> {
             ":feature",
             ":infra"
         )
+        const val CURRENT_DEVELOPING_PROJECT_PATHS_KEY = "currentDevelopingProjectPaths"
     }
 
     private var artifacts: List<File> = emptyList()
@@ -41,16 +42,16 @@ class ModuleBuildingFaster : Plugin<Project> {
 
     private fun getNotDevelopedProjects(target: Project): List<Project> {
         return getProjects(target).filterNot {
-            getCurrentDevelopingProjectPaths(target.rootDir).contains(
+            getCurrentDevelopingProjectPaths(target).contains(
                 it.path
             )
         }
     }
 
-    private fun getCurrentDevelopingProjectPaths(rootDir: File): List<String> {
+    private fun getCurrentDevelopingProjectPaths(target: Project): List<String> {
         return java.util.Properties().run {
-            load(File(rootDir.absolutePath + "/local.properties").inputStream())
-            getProperty("currentDevelopingProjectPaths").split(",")
+            load(File(target.rootDir.absolutePath + "/local.properties").inputStream())
+            getProperty(CURRENT_DEVELOPING_PROJECT_PATHS_KEY)?.split(",")?: getProjects(target).map { it.path }
         }
     }
 
@@ -95,13 +96,13 @@ class ModuleBuildingFaster : Plugin<Project> {
 
     private fun removeProjectDependencies(project: Project) {
         getImplementationConfiguration(project)?.dependencies?.removeIf {
-            (it is ProjectDependency) && isExistAllAppVariantArtifactInMavenLocalRepo(it.dependencyProject)
+            (it is ProjectDependency) && isExistAllAppVariantArtifactInMavenLocalRepo(it.dependencyProject) && isNotDevelopedProject(it.dependencyProject)
         }
     }
 
     private fun convertProjectDependencyToArtifactDependenciesForProject(project: Project) {
         getImplementationConfiguration(project)?.dependencies?.forEach { dependency ->
-            if (dependency is ProjectDependency) {
+            if (dependency is ProjectDependency && isNotDevelopedProject(dependency.dependencyProject)) {
                 println("$project depends on ${dependency.dependencyProject}")
                 if (isExistAllAppVariantArtifactInMavenLocalRepo(dependency.dependencyProject)) {
                     println("Start converting project dependency to artifact with ${dependency.dependencyProject} in $project")
