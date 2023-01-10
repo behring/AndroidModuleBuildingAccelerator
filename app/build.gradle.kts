@@ -29,6 +29,22 @@ android {
             )
         }
     }
+
+    flavorDimensions += "country"
+    productFlavors {
+        create("hk") {
+            dimension = "country"
+            applicationIdSuffix = ".hk"
+            versionNameSuffix = "-hk"
+        }
+
+        create("sg") {
+            dimension = "country"
+            applicationIdSuffix = ".sg"
+            versionNameSuffix = "-sg"
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8

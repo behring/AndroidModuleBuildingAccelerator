@@ -79,15 +79,14 @@ class ModuleBuildingFaster : Plugin<Project> {
 
             getProjects(target).forEach { project ->
                 if (isAppProject(project)) {
-                    appVariantNames = getAppVariantNames(project)
+                    appVariantNames = getAppVariants(project)
                     convertProjectDependencyToArtifactDependenciesForProject(project)
                     removeProjectDependencies(project)
                 } else if (isAndroidLibraryProject(project)) {
                     if (appVariantNames.isEmpty()) println("No variants information collected.")
-                    appVariantNames.forEach { variantName ->
-                        configDependencyTaskForMavenPublishTasks(project, variantName)
-                        configMavenPublishPluginForLibraryWithAppVariant(project, variantName)
-                    }
+
+                    configDependencyTaskForMavenPublishTasks(project)
+                    configMavenPublishPluginForLibraryWithAppVariant(project)
 
                     if (!isNotDevelopedProject(project)) {
                         convertProjectDependencyToArtifactDependenciesForProject(project)
@@ -157,38 +156,39 @@ class ModuleBuildingFaster : Plugin<Project> {
 
     private fun Project.groupPath() = group.toString().replace(".", "/")
 
-    private fun configMavenPublishPluginForLibraryWithAppVariant(
-        project: Project,
-        variantName: String
-    ) {
-        project.extensions.getByType(PublishingExtension::class.java)
-            .publications.maybeCreate(
-                project.name + variantName.capitalized(),
-                MavenPublication::class.java
-            ).run {
-                groupId = project.rootProject.group.toString()
-                artifactId = "${project.name}-$variantName"
-                version = project.version.toString()
-                getOutputFile(project, variantName)?.let {
-                    artifact(it)
+    private fun configMavenPublishPluginForLibraryWithAppVariant(project: Project) {
+        getAndroidLibraryVariants(project).forEach { libraryVariant ->
+            project.extensions.getByType(PublishingExtension::class.java)
+                .publications.maybeCreate(
+                    project.name + libraryVariant.capitalized(),
+                    MavenPublication::class.java
+                ).run {
+                    groupId = project.rootProject.group.toString()
+                    artifactId = "${project.name}-$libraryVariant"
+                    version = project.version.toString()
+                    getOutputFile(project, libraryVariant)?.let {
+                        artifact(it)
+                    }
                 }
-            }
+        }
     }
 
-    private fun configDependencyTaskForMavenPublishTasks(project: Project, variantName: String) {
-        project.tasks.whenTaskAdded {
-            val assembleTask =
-                project.tasks.findByPath("${project.path}:assemble${variantName.capitalized()}")
-            if (assembleTask == null) {
-                println(
-                    "${
-                        assembleTask.toString().toString()
-                    } is not exist. can not publish the corresponding artifact."
-                )
-                return@whenTaskAdded
-            }
-            if (name.startsWith("publish${project.name.capitalized()}${variantName.capitalized()}PublicationTo")) {
-                dependsOn(assembleTask)
+    private fun configDependencyTaskForMavenPublishTasks(project: Project) {
+        getAndroidLibraryVariants(project).forEach { libraryVariant->
+            project.tasks.whenTaskAdded {
+                val assembleTask =
+                    project.tasks.findByPath("${project.path}:assemble${libraryVariant.capitalized()}")
+                if (assembleTask == null) {
+                    println(
+                        "${
+                            assembleTask.toString().toString()
+                        } is not exist. can not publish the corresponding artifact."
+                    )
+                    return@whenTaskAdded
+                }
+                if (name.startsWith("publish${project.name.capitalized()}${libraryVariant.capitalized()}PublicationTo")) {
+                    dependsOn(assembleTask)
+                }
             }
         }
     }
@@ -279,8 +279,13 @@ class ModuleBuildingFaster : Plugin<Project> {
     private fun isAppProject(project: Project) =
         project.extensions.findByType(AppExtension::class.java) != null
 
-    private fun getAppVariantNames(project: Project) =
+    private fun getAppVariants(project: Project) =
         project.extensions.findByType(AppExtension::class.java)!!.applicationVariants.map { variant ->
+            variant.name
+        }
+
+    private fun getAndroidLibraryVariants(project: Project) =
+        project.extensions.findByType(LibraryExtension::class.java)!!.libraryVariants.map { variant ->
             variant.name
         }
 
