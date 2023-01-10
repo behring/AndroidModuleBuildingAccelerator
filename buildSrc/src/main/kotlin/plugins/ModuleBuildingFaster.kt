@@ -41,9 +41,11 @@ class ModuleBuildingFaster : Plugin<Project> {
         convertDependencyConfiguration(target)
     }
 
-
-    private fun setEmptySourceSetsForNotDevelopedProject(project: Project) {
-        if (notDevelopedProjects.contains(project) && isAndroidLibraryProject(project)) {
+    private fun tryDisableAllTasksForNotDevelopedProject(project: Project) {
+        if (notDevelopedProjects.contains(project) && isAndroidLibraryProject(project) && isExistArtifacts(
+                project
+            )
+        ) {
             project.tasks.forEach { it.enabled = false }
             println("disable tasks for ${project.path}")
         }
@@ -92,7 +94,7 @@ class ModuleBuildingFaster : Plugin<Project> {
                         removeProjectDependencies(project)
                     }
 
-                    setEmptySourceSetsForNotDevelopedProject(project)
+                    tryDisableAllTasksForNotDevelopedProject(project)
 
                 } else {
                     println("This project is not a app or android module. project name: ${project.name}")
@@ -175,9 +177,14 @@ class ModuleBuildingFaster : Plugin<Project> {
 
     private fun configDependencyTaskForMavenPublishTasks(project: Project, variantName: String) {
         project.tasks.whenTaskAdded {
-            val assembleTask = project.tasks.findByPath("${project.path}:assemble${variantName.capitalized()}")
+            val assembleTask =
+                project.tasks.findByPath("${project.path}:assemble${variantName.capitalized()}")
             if (assembleTask == null) {
-                println("${assembleTask.toString().toString()} is not exist. can not publish the corresponding artifact.")
+                println(
+                    "${
+                        assembleTask.toString().toString()
+                    } is not exist. can not publish the corresponding artifact."
+                )
                 return@whenTaskAdded
             }
             if (name.startsWith("publish${project.name.capitalized()}${variantName.capitalized()}PublicationTo")) {
