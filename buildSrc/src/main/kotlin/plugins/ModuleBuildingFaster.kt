@@ -175,8 +175,13 @@ class ModuleBuildingFaster : Plugin<Project> {
 
     private fun configDependencyTaskForMavenPublishTasks(project: Project, variantName: String) {
         project.tasks.whenTaskAdded {
+            val assembleTask = project.tasks.findByPath("${project.path}:assemble${variantName.capitalized()}")
+            if (assembleTask == null) {
+                println("${assembleTask.toString().toString()} is not exist. can not publish the corresponding artifact.")
+                return@whenTaskAdded
+            }
             if (name.startsWith("publish${project.name.capitalized()}${variantName.capitalized()}PublicationTo")) {
-                dependsOn("${project.path}:assemble${variantName.capitalized()}")
+                dependsOn(assembleTask)
             }
         }
     }
