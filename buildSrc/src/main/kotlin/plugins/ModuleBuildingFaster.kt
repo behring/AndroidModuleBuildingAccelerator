@@ -220,8 +220,10 @@ class ModuleBuildingFaster : Plugin<Project> {
         dependencyProject: Project
     ) {
         appVariantNames.forEach { appVariantName ->
-            println("[Converting based on all variants] Convert project" +
-                    " dependency to artifact with ${appVariantName}Implementation(${dependencyProject.rootProject.group}:${dependencyProject.name}-$appVariantName:${dependencyProject.version}) for $project")
+            println(
+                "[Converting based on all variants] Convert project" +
+                        " dependency to artifact with ${appVariantName}Implementation(${dependencyProject.rootProject.group}:${dependencyProject.name}-$appVariantName:${dependencyProject.version}) for $project"
+            )
 
             project.dependencies.add(
                 "${appVariantName}Implementation",
@@ -236,8 +238,10 @@ class ModuleBuildingFaster : Plugin<Project> {
         dependencyProject: Project
     ) {
         getArtifacts(dependencyProject).forEach {
-            println("[Converting based on existing artifacts] Convert project" +
-                    " dependency to artifact with ${it.buildVariant}Implementation(${dependencyProject.rootProject.group}:${dependencyProject.name}-${it.buildVariant}:${it.version}) for $project")
+            println(
+                "[Converting based on existing artifacts] Convert project" +
+                        " dependency to artifact with ${it.buildVariant}Implementation(${dependencyProject.rootProject.group}:${dependencyProject.name}-${it.buildVariant}:${it.version}) for $project"
+            )
             project.dependencies.add(
                 "${it.buildVariant}Implementation",
                 "${dependencyProject.rootProject.group}:${dependencyProject.name}-${it.buildVariant}:${it.version}"
@@ -251,9 +255,13 @@ class ModuleBuildingFaster : Plugin<Project> {
         project.extensions.findByType(LibraryExtension::class.java) != null
 
     private fun getOutputFile(project: Project, variantName: String): File? {
-        return project.extensions.findByType(LibraryExtension::class.java)?.libraryVariants?.first {
-            it.name.equals(variantName)
-        }?.outputs?.first()?.outputFile
+        return try {
+            project.extensions.findByType(LibraryExtension::class.java)?.libraryVariants?.first {
+                it.name.equals(variantName)
+            }?.outputs?.first()?.outputFile
+        } catch (e: NoSuchElementException) {
+            null
+        }
     }
 
     private fun isAppProject(project: Project) =
