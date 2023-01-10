@@ -133,7 +133,9 @@ class ModuleBuildingFaster : Plugin<Project> {
                 groupId = project.rootProject.group.toString()
                 artifactId = "${project.name}-$variantName"
                 version = project.version.toString()
-                artifact(getOutputFile(project, variantName))
+                getOutputFile(project, variantName)?.let {
+                    artifact(it)
+                }
             }
     }
 
