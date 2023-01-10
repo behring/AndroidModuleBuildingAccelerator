@@ -22,6 +22,7 @@ class ModuleBuildingFaster : Plugin<Project> {
     )
 
     companion object {
+        const val SEPARATOR = "-"
         const val IS_COMPLETELY_MATCH_APP_VARIANTS = true
         const val CURRENT_DEVELOPING_PROJECT_PATHS_KEY = "currentDevelopingProjectPaths"
         val SKIP_PARENT_PROJECT_PATH = listOf(
@@ -160,11 +161,11 @@ class ModuleBuildingFaster : Plugin<Project> {
         getAndroidLibraryVariants(project).forEach { libraryVariant ->
             project.extensions.getByType(PublishingExtension::class.java)
                 .publications.maybeCreate(
-                    project.name + libraryVariant.capitalized(),
+                    project.name.convertCamelNaming() + libraryVariant.capitalized(),
                     MavenPublication::class.java
                 ).run {
                     groupId = project.rootProject.group.toString()
-                    artifactId = "${project.name}-$libraryVariant"
+                    artifactId = "${project.name.convertCamelNaming()}$SEPARATOR$libraryVariant"
                     version = project.version.toString()
                     getOutputFile(project, libraryVariant)?.let {
                         artifact(it)
@@ -172,6 +173,8 @@ class ModuleBuildingFaster : Plugin<Project> {
                 }
         }
     }
+
+    private fun String.convertCamelNaming() = split(SEPARATOR).joinToString("") {it.capitalized()}.decapitalize()
 
     private fun configDependencyTaskForMavenPublishTasks(project: Project) {
         getAndroidLibraryVariants(project).forEach { libraryVariant->
@@ -186,7 +189,7 @@ class ModuleBuildingFaster : Plugin<Project> {
                     )
                     return@whenTaskAdded
                 }
-                if (name.startsWith("publish${project.name.capitalized()}${libraryVariant.capitalized()}PublicationTo")) {
+                if (name.startsWith("publish${project.name.convertCamelNaming().capitalized()}${libraryVariant.capitalized()}PublicationTo")) {
                     dependsOn(assembleTask)
                 }
             }
