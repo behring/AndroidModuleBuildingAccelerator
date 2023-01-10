@@ -201,7 +201,7 @@ class ModuleBuildingFaster : Plugin<Project> {
         File(rootProjectMavenLocalDir).walkTopDown().filter { it.isFile && it.extension == "aar" }
             .forEach {
                 // moduleName-buildVariant-version.aar
-                val moduleInfo = it.nameWithoutExtension.split("-")
+                val moduleInfo = it.nameWithoutExtension.split(SEPARATOR, limit = 3)
                 artifacts.add(
                     Artifact(
                         projectName = moduleInfo[0],
