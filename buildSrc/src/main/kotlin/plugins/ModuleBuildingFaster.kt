@@ -13,15 +13,24 @@ import org.gradle.configurationcache.extensions.capitalized
 import java.io.File
 
 class ModuleBuildingFaster : Plugin<Project> {
+
+    data class Artifact(
+        val projectName: String,
+        val buildVariant: String,
+        val version: String,
+        val file: File
+    )
+
     companion object {
+        const val IS_COMPLETELY_MATCH_APP_VARIANTS = true
+        const val CURRENT_DEVELOPING_PROJECT_PATHS_KEY = "currentDevelopingProjectPaths"
         val SKIP_PARENT_PROJECT_PATH = listOf(
             ":feature",
             ":infra"
         )
-        const val CURRENT_DEVELOPING_PROJECT_PATHS_KEY = "currentDevelopingProjectPaths"
     }
 
-    private var artifacts: List<File> = emptyList()
+    private var artifacts: List<Artifact> = emptyList()
     private var appVariantNames: List<String> = emptyList()
     private var notDevelopedProjects: List<Project> = emptyList()
 
@@ -51,7 +60,8 @@ class ModuleBuildingFaster : Plugin<Project> {
     private fun getCurrentDevelopingProjectPaths(target: Project): List<String> {
         return java.util.Properties().run {
             load(File(target.rootDir.absolutePath + "/local.properties").inputStream())
-            getProperty(CURRENT_DEVELOPING_PROJECT_PATHS_KEY)?.split(",")?: getProjects(target).map { it.path }
+            getProperty(CURRENT_DEVELOPING_PROJECT_PATHS_KEY)?.split(",")
+                ?: getProjects(target).map { it.path }
         }
     }
 
@@ -96,7 +106,9 @@ class ModuleBuildingFaster : Plugin<Project> {
 
     private fun removeProjectDependencies(project: Project) {
         getImplementationConfiguration(project)?.dependencies?.removeIf {
-            (it is ProjectDependency) && isExistAllAppVariantArtifactInMavenLocalRepo(it.dependencyProject) && isNotDevelopedProject(it.dependencyProject)
+            (it is ProjectDependency) && isExistArtifacts(it.dependencyProject) && isNotDevelopedProject(
+                it.dependencyProject
+            )
         }
     }
 
@@ -104,15 +116,37 @@ class ModuleBuildingFaster : Plugin<Project> {
         getImplementationConfiguration(project)?.dependencies?.forEach { dependency ->
             if (dependency is ProjectDependency && isNotDevelopedProject(dependency.dependencyProject)) {
                 println("$project depends on ${dependency.dependencyProject}")
-                if (isExistAllAppVariantArtifactInMavenLocalRepo(dependency.dependencyProject)) {
-                    println("Start converting project dependency to artifact with ${dependency.dependencyProject} in $project")
-                    convertProjectDependencyToArtifactDependencies(
-                        project,
-                        dependency.dependencyProject
-                    )
+                if (IS_COMPLETELY_MATCH_APP_VARIANTS) {
+                    convertDependencyConfigurationBasedOnAppVariants(project, dependency)
+                } else {
+                    convertDependencyConfigurationBasedOnExistArtifacts(project, dependency)
                 }
             }
         }
+    }
+
+    private fun convertDependencyConfigurationBasedOnExistArtifacts(
+        project: Project,
+        dependency: ProjectDependency
+    ) {
+        if (isExistArtifacts(dependency.dependencyProject)) {
+            convertProjectDependencyToArtifactDependenciesWithExistingArtifacts(
+                project,
+                dependency.dependencyProject
+            )
+        } else println("Project ${dependency.dependencyProject} have not corresponding artifacts，please generate them with publish task.")
+    }
+
+    private fun convertDependencyConfigurationBasedOnAppVariants(
+        project: Project,
+        dependency: ProjectDependency
+    ) {
+        if (isExistAllAppVariantArtifacts(dependency.dependencyProject)) {
+            convertProjectDependencyToArtifactDependenciesWithAppVariants(
+                project,
+                dependency.dependencyProject
+            )
+        } else println("Project ${dependency.dependencyProject} have not corresponding artifacts，please generate them with publish task.")
     }
 
     private fun getMavenLocalDirForRootProject(target: Project): String {
@@ -147,28 +181,48 @@ class ModuleBuildingFaster : Plugin<Project> {
         }
     }
 
-    private fun collectExistArtifacts(rootProjectMavenLocalDir: String) =
+    private fun collectExistArtifacts(rootProjectMavenLocalDir: String): List<Artifact> {
+        val artifacts = mutableListOf<Artifact>()
         File(rootProjectMavenLocalDir).walkTopDown().filter { it.isFile && it.extension == "aar" }
-            .toList()
+            .forEach {
+                // moduleName-buildVariant-version.aar
+                val moduleInfo = it.nameWithoutExtension.split("-")
+                artifacts.add(
+                    Artifact(
+                        projectName = moduleInfo[0],
+                        buildVariant = moduleInfo[1],
+                        version = moduleInfo[2],
+                        file = it
+                    )
+                )
+            }
+        return artifacts
+    }
 
 
-    private fun isExistAllAppVariantArtifactInMavenLocalRepo(project: Project) =
+    private fun getArtifacts(project: Project) = artifacts.filter { it.projectName == project.name }
+
+    private fun isExistArtifacts(project: Project) = getArtifacts(project).isNotEmpty()
+
+    private fun isExistAllAppVariantArtifacts(project: Project) =
         appVariantNames.all { variantName ->
             artifacts.any { artifact ->
-                artifact.name.contains(
-                    "${project.name}-${variantName}-${project.version}",
-                    true
-                )
+                artifact.run {
+                    projectName == project.name && buildVariant == variantName && version == project.version
+                }
             }.apply {
                 if (!this) println("artifact ${project.name}-${variantName}-${project.version}.aar is not exists in MavenLocal repository. can't convert to artifact dependency.")
             }
         }
 
-    private fun convertProjectDependencyToArtifactDependencies(
+    private fun convertProjectDependencyToArtifactDependenciesWithAppVariants(
         project: Project,
         dependencyProject: Project
     ) {
         appVariantNames.forEach { appVariantName ->
+            println("[Converting based on all variants] Convert project" +
+                    " dependency to artifact with ${appVariantName}Implementation(${dependencyProject.rootProject.group}:${dependencyProject.name}-$appVariantName:${dependencyProject.version}) for $project")
+
             project.dependencies.add(
                 "${appVariantName}Implementation",
                 "${dependencyProject.rootProject.group}:${dependencyProject.name}-$appVariantName:${dependencyProject.version}"
@@ -176,6 +230,20 @@ class ModuleBuildingFaster : Plugin<Project> {
         }
     }
 
+    // https://developer.android.com/studio/build#sourcesets
+    private fun convertProjectDependencyToArtifactDependenciesWithExistingArtifacts(
+        project: Project,
+        dependencyProject: Project
+    ) {
+        getArtifacts(dependencyProject).forEach {
+            println("[Converting based on existing artifacts] Convert project" +
+                    " dependency to artifact with ${it.buildVariant}Implementation(${dependencyProject.rootProject.group}:${dependencyProject.name}-${it.buildVariant}:${it.version}) for $project")
+            project.dependencies.add(
+                "${it.buildVariant}Implementation",
+                "${dependencyProject.rootProject.group}:${dependencyProject.name}-${it.buildVariant}:${it.version}"
+            )
+        }
+    }
 
     private fun isNotDevelopedProject(project: Project) = notDevelopedProjects.contains(project)
 
