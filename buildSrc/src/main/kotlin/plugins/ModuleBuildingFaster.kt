@@ -23,7 +23,7 @@ class ModuleBuildingFaster : Plugin<Project> {
 
     companion object {
         const val SEPARATOR = "-"
-        const val IS_COMPLETELY_MATCH_APP_VARIANTS = true
+        const val IS_COMPLETELY_MATCH_APP_VARIANTS = false
         const val CURRENT_DEVELOPING_PROJECT_PATHS_KEY = "currentDevelopingProjectPaths"
         val SKIP_PARENT_PROJECT_PATH = listOf(
             ":feature",
