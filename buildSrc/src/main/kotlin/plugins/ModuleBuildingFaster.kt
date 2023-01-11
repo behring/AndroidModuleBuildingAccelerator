@@ -179,18 +179,15 @@ class ModuleBuildingFaster : Plugin<Project> {
     private fun configDependencyTaskForMavenPublishTasks(project: Project) {
         getAndroidLibraryVariants(project).forEach { libraryVariant->
             project.tasks.whenTaskAdded {
-                val assembleTask =
-                    project.tasks.findByPath("${project.path}:assemble${libraryVariant.capitalized()}")
+                val assembleTaskPath = "${project.path}:assemble${libraryVariant.capitalized()}"
+                val assembleTask = project.tasks.findByPath(assembleTaskPath)
                 if (assembleTask == null) {
-                    println(
-                        "${
-                            assembleTask.toString().toString()
-                        } is not exist. can not publish the corresponding artifact."
-                    )
+                    println("$assembleTaskPath is not exist. can not publish the corresponding artifact.")
                     return@whenTaskAdded
                 }
+                val cleanTask = project.tasks.findByPath("${project.path}:clean")
                 if (name.startsWith("publish${project.name.convertCamelNaming().capitalized()}${libraryVariant.capitalized()}PublicationTo")) {
-                    dependsOn(assembleTask)
+                    dependsOn(cleanTask, assembleTask)
                 }
             }
         }
