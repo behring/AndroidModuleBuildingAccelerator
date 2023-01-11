@@ -11,6 +11,8 @@ import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.configurationcache.extensions.capitalized
 import java.io.File
+import java.util.*
+import kotlin.NoSuchElementException
 
 class ModuleBuildingFaster : Plugin<Project> {
 
@@ -161,11 +163,11 @@ class ModuleBuildingFaster : Plugin<Project> {
         getAndroidLibraryVariants(project).forEach { libraryVariant ->
             project.extensions.getByType(PublishingExtension::class.java)
                 .publications.maybeCreate(
-                    project.name.convertCamelNaming() + libraryVariant.capitalized(),
+                    project.path.convertToUniqueProjectName() + libraryVariant.capitalized(),
                     MavenPublication::class.java
                 ).run {
                     groupId = project.rootProject.group.toString()
-                    artifactId = "${project.name.convertCamelNaming()}$SEPARATOR$libraryVariant"
+                    artifactId = "${project.path.convertToUniqueProjectName()}$SEPARATOR$libraryVariant"
                     version = project.version.toString()
                     getOutputFile(project, libraryVariant)?.let {
                         artifact(it)
@@ -174,7 +176,9 @@ class ModuleBuildingFaster : Plugin<Project> {
         }
     }
 
-    private fun String.convertCamelNaming() = split(SEPARATOR).joinToString("") {it.capitalized()}.decapitalize()
+    private fun String.convertToUniqueProjectName() = split(":").joinToString("") {it.convertToCamelNaming()}.decapitalize()
+
+    private fun String.convertToCamelNaming() = split(SEPARATOR).joinToString("") {it.toLowerCase(Locale.ROOT).capitalized()}
 
     private fun configDependencyTaskForMavenPublishTasks(project: Project) {
         getAndroidLibraryVariants(project).forEach { libraryVariant->
@@ -186,7 +190,7 @@ class ModuleBuildingFaster : Plugin<Project> {
                     return@whenTaskAdded
                 }
 
-                if (name.startsWith("publish${project.name.convertCamelNaming().capitalized()}${libraryVariant.capitalized()}PublicationTo")) {
+                if (name.startsWith("publish${project.path.convertToUniqueProjectName().capitalized()}${libraryVariant.capitalized()}PublicationTo")) {
                     dependsOn(assembleTask)
                 }
             }
