@@ -36,6 +36,11 @@ android {
     buildFeatures {
         compose = true
     }
+
+    // https://stackoverflow.com/questions/72244263/unresolved-reference-when-using-a-generated-aar-with-composables
+    // 'META-INF/*.kotlin_module': this file is needed to access top-level members.
+    packagingOptions {
+    }
 }
 
 dependencies {
