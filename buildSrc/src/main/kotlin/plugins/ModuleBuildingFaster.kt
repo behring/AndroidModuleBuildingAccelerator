@@ -24,25 +24,54 @@ class ModuleBuildingFaster : Plugin<Project> {
     )
 
     companion object {
-        const val SEPARATOR = "-"
+        // All project dependencies will be converted to artifacts dependencies when this value is true.
+        // Please make sure you have published all artifacts for relevant projects.
+        const val PLUGIN_ENABLE_SWITCH_KEY = "enableModulesBuildFaster"
+
+        // This property is used to control which modules will be as a project dependency.
+        const val FOCUS_MODULE_PATHS = "focusModules"
+
         const val IS_COMPLETELY_MATCH_APP_VARIANTS = false
-        const val CURRENT_DEVELOPING_PROJECT_PATHS_KEY = "currentDevelopingProjectPaths"
+        const val SEPARATOR = "-"
         val SKIP_PARENT_PROJECT_PATH = listOf(
             ":feature",
             ":infra"
         )
     }
 
+    private lateinit var configProperties: Properties
     private var artifacts: List<Artifact> = emptyList()
     private var appVariantNames: List<String> = emptyList()
     private var notDevelopedProjects: List<Project> = emptyList()
 
     override fun apply(target: Project) {
         target.gradle.addListener(TimingsListener())
+        configProperties = loadConfigProperties(target)
+        if (!isEnablePlugin()) return
         notDevelopedProjects = getNotDevelopedProjects(target)
         addMavenPublishPluginToSubProject(target)
         convertDependencyConfiguration(target)
     }
+
+    private fun loadConfigProperties(target: Project) =
+        Properties().apply {
+            load(File(target.rootDir.absolutePath + "/local.properties").inputStream())
+        }
+
+    private fun getNotDevelopedProjects(target: Project): List<Project> {
+        return getProjects(target).filterNot {
+            getFocusModulePaths(target).contains(
+                it.path
+            )
+        }
+    }
+
+    private fun getFocusModulePaths(target: Project) =
+        configProperties.getProperty(FOCUS_MODULE_PATHS)?.split(",")
+            ?: getProjects(target).map { it.path }
+
+    private fun isEnablePlugin() =
+        (configProperties.getProperty(PLUGIN_ENABLE_SWITCH_KEY) ?: "false").toBoolean()
 
     private fun tryDisableAllTasksForNotDevelopedProject(project: Project) {
         if (notDevelopedProjects.contains(project) && isAndroidLibraryProject(project) && isExistArtifacts(
@@ -51,22 +80,6 @@ class ModuleBuildingFaster : Plugin<Project> {
         ) {
             project.tasks.forEach { it.enabled = false }
             println("disable tasks for ${project.path}")
-        }
-    }
-
-    private fun getNotDevelopedProjects(target: Project): List<Project> {
-        return getProjects(target).filterNot {
-            getCurrentDevelopingProjectPaths(target).contains(
-                it.path
-            )
-        }
-    }
-
-    private fun getCurrentDevelopingProjectPaths(target: Project): List<String> {
-        return java.util.Properties().run {
-            load(File(target.rootDir.absolutePath + "/local.properties").inputStream())
-            getProperty(CURRENT_DEVELOPING_PROJECT_PATHS_KEY)?.split(",")
-                ?: getProjects(target).map { it.path }
         }
     }
 
@@ -167,7 +180,8 @@ class ModuleBuildingFaster : Plugin<Project> {
                     MavenPublication::class.java
                 ).run {
                     groupId = project.rootProject.group.toString()
-                    artifactId = "${project.path.convertToUniqueProjectName()}$SEPARATOR$libraryVariant"
+                    artifactId =
+                        "${project.path.convertToUniqueProjectName()}$SEPARATOR$libraryVariant"
                     version = project.version.toString()
                     getOutputFile(project, libraryVariant)?.let {
                         artifact(it)
@@ -176,12 +190,14 @@ class ModuleBuildingFaster : Plugin<Project> {
         }
     }
 
-    private fun String.convertToUniqueProjectName() = split(":").joinToString("") {it.convertToCamelNaming()}.decapitalize()
+    private fun String.convertToUniqueProjectName() =
+        split(":").joinToString("") { it.convertToCamelNaming() }.decapitalize()
 
-    private fun String.convertToCamelNaming() = split(SEPARATOR).joinToString("") {it.toLowerCase(Locale.ROOT).capitalized()}
+    private fun String.convertToCamelNaming() =
+        split(SEPARATOR).joinToString("") { it.toLowerCase(Locale.ROOT).capitalized() }
 
     private fun configDependencyTaskForMavenPublishTasks(project: Project) {
-        getAndroidLibraryVariants(project).forEach { libraryVariant->
+        getAndroidLibraryVariants(project).forEach { libraryVariant ->
             project.tasks.whenTaskAdded {
                 val assembleTaskPath = "${project.path}:assemble${libraryVariant.capitalized()}"
                 val assembleTask = project.tasks.findByPath(assembleTaskPath)
@@ -190,7 +206,12 @@ class ModuleBuildingFaster : Plugin<Project> {
                     return@whenTaskAdded
                 }
 
-                if (name.startsWith("publish${project.path.convertToUniqueProjectName().capitalized()}${libraryVariant.capitalized()}PublicationTo")) {
+                if (name.startsWith(
+                        "publish${
+                            project.path.convertToUniqueProjectName().capitalized()
+                        }${libraryVariant.capitalized()}PublicationTo"
+                    )
+                ) {
                     dependsOn(assembleTask)
                 }
             }
