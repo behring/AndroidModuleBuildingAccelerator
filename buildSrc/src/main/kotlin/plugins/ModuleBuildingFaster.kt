@@ -94,7 +94,7 @@ class ModuleBuildingFaster : Plugin<Project> {
                         removeProjectDependencies(project)
                     }
 
-                    tryDisableAllTasksForNotDevelopedProject(project)
+//                    tryDisableAllTasksForNotDevelopedProject(project)
 
                 } else {
                     println("This project is not a app or android module. project name: ${project.name}")
