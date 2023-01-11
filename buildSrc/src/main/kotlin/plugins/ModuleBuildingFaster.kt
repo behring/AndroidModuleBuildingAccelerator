@@ -237,7 +237,8 @@ class ModuleBuildingFaster : Plugin<Project> {
     }
 
 
-    private fun getArtifacts(project: Project) = artifacts.filter { it.projectName == project.name }
+    private fun getArtifacts(project: Project) =
+        artifacts.filter { it.projectName == project.path.convertToUniqueProjectName() }
 
     private fun isExistArtifacts(project: Project) = getArtifacts(project).isNotEmpty()
 
@@ -259,12 +260,12 @@ class ModuleBuildingFaster : Plugin<Project> {
         appVariantNames.forEach { appVariantName ->
             println(
                 "[Converting based on all variants] Convert project" +
-                        " dependency to artifact with ${appVariantName}Implementation(${dependencyProject.rootProject.group}:${dependencyProject.name}-$appVariantName:${dependencyProject.version}) for $project"
+                        " dependency to artifact with ${appVariantName}Implementation(${dependencyProject.rootProject.group}:${dependencyProject.path.convertToUniqueProjectName()}-$appVariantName:${dependencyProject.version}) for $project"
             )
 
             project.dependencies.add(
                 "${appVariantName}Implementation",
-                "${dependencyProject.rootProject.group}:${dependencyProject.name}-$appVariantName:${dependencyProject.version}"
+                "${dependencyProject.rootProject.group}:${dependencyProject.path.convertToUniqueProjectName()}-$appVariantName:${dependencyProject.version}"
             )
         }
     }
@@ -277,11 +278,11 @@ class ModuleBuildingFaster : Plugin<Project> {
         getArtifacts(dependencyProject).forEach {
             println(
                 "[Converting based on existing artifacts] Convert project" +
-                        " dependency to artifact with ${it.buildVariant}Implementation(${dependencyProject.rootProject.group}:${dependencyProject.name}-${it.buildVariant}:${it.version}) for $project"
+                        " dependency to artifact with ${it.buildVariant}Implementation(${dependencyProject.rootProject.group}:${dependencyProject.path.convertToUniqueProjectName()}-${it.buildVariant}:${it.version}) for $project"
             )
             project.dependencies.add(
                 "${it.buildVariant}Implementation",
-                "${dependencyProject.rootProject.group}:${dependencyProject.name}-${it.buildVariant}:${it.version}"
+                "${dependencyProject.rootProject.group}:${it.projectName}-${it.buildVariant}:${it.version}"
             )
         }
     }
