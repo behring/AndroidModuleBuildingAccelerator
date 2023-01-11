@@ -185,9 +185,9 @@ class ModuleBuildingFaster : Plugin<Project> {
                     println("$assembleTaskPath is not exist. can not publish the corresponding artifact.")
                     return@whenTaskAdded
                 }
-                val cleanTask = project.tasks.findByPath("${project.path}:clean")
+
                 if (name.startsWith("publish${project.name.convertCamelNaming().capitalized()}${libraryVariant.capitalized()}PublicationTo")) {
-                    dependsOn(cleanTask, assembleTask)
+                    dependsOn(assembleTask)
                 }
             }
         }
