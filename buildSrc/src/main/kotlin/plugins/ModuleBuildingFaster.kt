@@ -26,10 +26,11 @@ class ModuleBuildingFaster : Plugin<Project> {
     companion object {
         // All project dependencies will be converted to artifacts dependencies when this value is true.
         // Please make sure you have published all artifacts for relevant projects.
-        const val PLUGIN_ENABLE_SWITCH_KEY = "enableModulesBuildFaster"
+        const val PLUGIN_ENABLE_SWITCH_KEY = "buildingFaster.enable"
 
         // This property is used to control which modules will be as a project dependency.
-        const val FOCUS_MODULE_PATHS = "focusModules"
+        // if the value is null, all android libraries will be disabled for all tasks.
+        const val WORKSPACE = "buildingFaster.workspace"
 
         const val IS_COMPLETELY_MATCH_APP_VARIANTS = false
         const val SEPARATOR = "-"
@@ -42,13 +43,13 @@ class ModuleBuildingFaster : Plugin<Project> {
     private lateinit var configProperties: Properties
     private var artifacts: List<Artifact> = emptyList()
     private var appVariantNames: List<String> = emptyList()
-    private var notDevelopedProjects: List<Project> = emptyList()
+    private var nonWorkspaceProjects: List<Project> = emptyList()
 
     override fun apply(target: Project) {
         target.gradle.addListener(TimingsListener())
         configProperties = loadConfigProperties(target)
         if (!isEnablePlugin()) return
-        notDevelopedProjects = getNotDevelopedProjects(target)
+        nonWorkspaceProjects = getNonWorkspaceProjects(target)
         addMavenPublishPluginToSubProject(target)
         convertDependencyConfiguration(target)
     }
@@ -58,23 +59,23 @@ class ModuleBuildingFaster : Plugin<Project> {
             load(File(target.rootDir.absolutePath + "/local.properties").inputStream())
         }
 
-    private fun getNotDevelopedProjects(target: Project): List<Project> {
+    private fun getNonWorkspaceProjects(target: Project): List<Project> {
         return getProjects(target).filterNot {
-            getFocusModulePaths(target).contains(
+            getWorkspaceModulePaths(target).contains(
                 it.path
             )
         }
     }
 
-    private fun getFocusModulePaths(target: Project) =
-        configProperties.getProperty(FOCUS_MODULE_PATHS)?.split(",")
-            ?: getProjects(target).map { it.path }
+    private fun getWorkspaceModulePaths(target: Project) =
+        configProperties.getProperty(WORKSPACE)?.split(",")
+            ?: emptyList()
 
     private fun isEnablePlugin() =
         (configProperties.getProperty(PLUGIN_ENABLE_SWITCH_KEY) ?: "false").toBoolean()
 
-    private fun tryDisableAllTasksForNotDevelopedProject(project: Project) {
-        if (notDevelopedProjects.contains(project) && isAndroidLibraryProject(project) && isExistArtifacts(
+    private fun tryDisableAllTasksForNonWorkspaceProject(project: Project) {
+        if (nonWorkspaceProjects.contains(project) && isAndroidLibraryProject(project) && isExistArtifacts(
                 project
             )
         ) {
@@ -104,12 +105,12 @@ class ModuleBuildingFaster : Plugin<Project> {
                     configDependencyTaskForMavenPublishTasks(project)
                     configMavenPublishPluginForLibraryWithAppVariant(project)
 
-                    if (!isNotDevelopedProject(project)) {
+                    if (!isExistNonWorkspace(project)) {
                         convertProjectDependencyToArtifactDependenciesForProject(project)
                         removeProjectDependencies(project)
                     }
 
-//                    tryDisableAllTasksForNotDevelopedProject(project)
+                    tryDisableAllTasksForNonWorkspaceProject(project)
 
                 } else {
                     println("This project is not a app or android module. project name: ${project.name}")
@@ -123,7 +124,7 @@ class ModuleBuildingFaster : Plugin<Project> {
 
     private fun removeProjectDependencies(project: Project) {
         getImplementationConfiguration(project)?.dependencies?.removeIf {
-            (it is ProjectDependency) && isExistArtifacts(it.dependencyProject) && isNotDevelopedProject(
+            (it is ProjectDependency) && isExistArtifacts(it.dependencyProject) && isExistNonWorkspace(
                 it.dependencyProject
             )
         }
@@ -131,7 +132,7 @@ class ModuleBuildingFaster : Plugin<Project> {
 
     private fun convertProjectDependencyToArtifactDependenciesForProject(project: Project) {
         getImplementationConfiguration(project)?.dependencies?.forEach { dependency ->
-            if (dependency is ProjectDependency && isNotDevelopedProject(dependency.dependencyProject)) {
+            if (dependency is ProjectDependency && isExistNonWorkspace(dependency.dependencyProject)) {
                 println("$project depends on ${dependency.dependencyProject}")
                 if (IS_COMPLETELY_MATCH_APP_VARIANTS) {
                     convertDependencyConfigurationBasedOnAppVariants(project, dependency)
@@ -287,7 +288,7 @@ class ModuleBuildingFaster : Plugin<Project> {
         }
     }
 
-    private fun isNotDevelopedProject(project: Project) = notDevelopedProjects.contains(project)
+    private fun isExistNonWorkspace(project: Project) = nonWorkspaceProjects.contains(project)
 
     private fun isAndroidLibraryProject(project: Project) =
         project.extensions.findByType(LibraryExtension::class.java) != null
