@@ -105,7 +105,7 @@ class ModuleBuildingFaster : Plugin<Project> {
                     configDependencyTaskForMavenPublishTasks(project)
                     configMavenPublishPluginForLibraryWithAppVariant(project)
 
-                    if (!isExistNonWorkspace(project)) {
+                    if (isExistWorkspace(project)) {
                         convertProjectDependencyToArtifactDependenciesForProject(project)
                         removeProjectDependencies(project)
                     }
@@ -124,15 +124,13 @@ class ModuleBuildingFaster : Plugin<Project> {
 
     private fun removeProjectDependencies(project: Project) {
         getImplementationConfiguration(project)?.dependencies?.removeIf {
-            (it is ProjectDependency) && isExistArtifacts(it.dependencyProject) && isExistNonWorkspace(
-                it.dependencyProject
-            )
+            (it is ProjectDependency) && isExistArtifacts(it.dependencyProject)
         }
     }
 
     private fun convertProjectDependencyToArtifactDependenciesForProject(project: Project) {
         getImplementationConfiguration(project)?.dependencies?.forEach { dependency ->
-            if (dependency is ProjectDependency && isExistNonWorkspace(dependency.dependencyProject)) {
+            if (dependency is ProjectDependency) {
                 println("$project depends on ${dependency.dependencyProject}")
                 if (IS_COMPLETELY_MATCH_APP_VARIANTS) {
                     convertDependencyConfigurationBasedOnAppVariants(project, dependency)
@@ -288,7 +286,7 @@ class ModuleBuildingFaster : Plugin<Project> {
         }
     }
 
-    private fun isExistNonWorkspace(project: Project) = nonWorkspaceProjects.contains(project)
+    private fun isExistWorkspace(project: Project) = !nonWorkspaceProjects.contains(project)
 
     private fun isAndroidLibraryProject(project: Project) =
         project.extensions.findByType(LibraryExtension::class.java) != null
