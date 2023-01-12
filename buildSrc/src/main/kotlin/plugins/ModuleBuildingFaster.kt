@@ -75,10 +75,7 @@ class ModuleBuildingFaster : Plugin<Project> {
         (configProperties.getProperty(PLUGIN_ENABLE_SWITCH_KEY) ?: "false").toBoolean()
 
     private fun tryDisableAllTasksForNonWorkspaceProject(project: Project) {
-        if (nonWorkspaceProjects.contains(project) && isAndroidLibraryProject(project) && isExistArtifacts(
-                project
-            )
-        ) {
+        if (!isExistWorkspace(project) && isAndroidLibraryProject(project) && isExistArtifacts(project)) {
             project.tasks.forEach { it.enabled = false }
             println("disable tasks for ${project.path}")
         }
@@ -104,11 +101,8 @@ class ModuleBuildingFaster : Plugin<Project> {
 
                     configDependencyTaskForMavenPublishTasks(project)
                     configMavenPublishPluginForLibraryWithAppVariant(project)
-
-                    if (isExistWorkspace(project)) {
-                        convertProjectDependencyToArtifactDependenciesForProject(project)
-                        removeProjectDependencies(project)
-                    }
+                    convertProjectDependencyToArtifactDependenciesForProject(project)
+                    removeProjectDependencies(project)
 
                     tryDisableAllTasksForNonWorkspaceProject(project)
 
@@ -124,13 +118,13 @@ class ModuleBuildingFaster : Plugin<Project> {
 
     private fun removeProjectDependencies(project: Project) {
         getImplementationConfiguration(project)?.dependencies?.removeIf {
-            (it is ProjectDependency) && isExistArtifacts(it.dependencyProject)
+            (it is ProjectDependency) && isExistArtifacts(it.dependencyProject) && !isExistWorkspace(it.dependencyProject)
         }
     }
 
     private fun convertProjectDependencyToArtifactDependenciesForProject(project: Project) {
         getImplementationConfiguration(project)?.dependencies?.forEach { dependency ->
-            if (dependency is ProjectDependency) {
+            if (dependency is ProjectDependency && !isExistWorkspace(dependency.dependencyProject)) {
                 println("$project depends on ${dependency.dependencyProject}")
                 if (IS_COMPLETELY_MATCH_APP_VARIANTS) {
                     convertDependencyConfigurationBasedOnAppVariants(project, dependency)
