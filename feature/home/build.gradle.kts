@@ -3,8 +3,6 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-version = "1.0.0"
-
 android {
     namespace = "cn.behring.home"
     compileSdk = 33
