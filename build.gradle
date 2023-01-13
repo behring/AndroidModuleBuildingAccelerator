@@ -9,4 +9,24 @@ plugins {
     id "ModuleBuildingFaster"
 }
 
+buildingFaster {
+    moduleSettings {
+        home {
+            groupId = "cn.zhaolin.home"
+            version = "1.0.0"
+            artifactId = "home"
+            useByAar = false
+            buildVariants("debug", "release")
+        }
+
+        payment {
+            groupId = "cn.zhaolin.payment"
+            version = "1.0.0"
+            artifactId = "payment"
+            useByAar = false
+            buildVariants("debug", "release")
+        }
+    }
+}
+
 group = "cn.behring.multimodulebuildfaster"

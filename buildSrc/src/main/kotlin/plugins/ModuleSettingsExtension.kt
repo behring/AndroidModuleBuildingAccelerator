@@ -9,6 +9,11 @@ open class ModuleSetting(val name: String) {
     var artifactId: String = ""
     var version: String = ""
     var useByAar: Boolean = false
+
+    private var buildVariants: List<String> = emptyList()
+    fun buildVariants(vararg variant: String) {
+        buildVariants = variant.toList()
+    }
 }
 
 open class ModuleSettingsExtension(val target: Project) {
