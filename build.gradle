@@ -6,10 +6,10 @@ buildscript {
 plugins {
     id 'com.android.application' apply false
     id 'com.android.library' apply false
-    id "ModuleBuildingFaster"
+    id "ModuleBuildingAccelerator"
 }
 
-buildingFaster {
+buildingAccelerator {
     mavenReleaseRepoPath = "https://xxx.xxx.xxx/repos/releases"
     mavenSnapshotRepoPath = "https://xxx.xxx.xxx/repos/snapshots"
 

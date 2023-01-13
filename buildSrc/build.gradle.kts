@@ -16,9 +16,9 @@ buildscript {
 
 gradlePlugin {
     plugins {
-        create("ModuleBuildingFaster") {
-            id = "ModuleBuildingFaster"
-            implementationClass = "plugins.ModuleBuildingFaster"
+        create("ModuleBuildingAccelerator") {
+            id = "ModuleBuildingAccelerator"
+            implementationClass = "plugins.ModuleBuildingAccelerator"
         }
     }
 }

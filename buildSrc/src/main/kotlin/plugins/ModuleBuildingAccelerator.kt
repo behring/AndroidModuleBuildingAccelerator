@@ -15,15 +15,15 @@ import java.io.File
 import java.net.URI
 import java.util.*
 
-class ModuleBuildingFaster : Plugin<Project> {
+class ModuleBuildingAccelerator : Plugin<Project> {
     companion object {
         // All project dependencies will be converted to artifacts dependencies when this value is true.
         // Please make sure you have published all artifacts for relevant projects.
-        const val PLUGIN_ENABLE_SWITCH_KEY = "buildingFaster.enable"
+        const val PLUGIN_ENABLE_SWITCH_KEY = "buildingAccelerator.enable"
 
         // This property is used to control which modules will be as a project dependency.
         // if the value is null, all android libraries will be disabled for all tasks.
-        const val WORKSPACE = "buildingFaster.workspace"
+        const val WORKSPACE = "buildingAccelerator.workspace"
 
         const val SEPARATOR = "-"
         val SKIP_PARENT_PROJECT_PATH = listOf(
@@ -60,7 +60,7 @@ class ModuleBuildingFaster : Plugin<Project> {
     }
 
     private fun createModuleSettingsExtension(target: Project): ModuleSettingsExtension =
-        target.extensions.create("buildingFaster", target)
+        target.extensions.create("buildingAccelerator", target)
 
     private fun getModuleSettings() = moduleSettingsExtension.moduleSettings?.toList().orEmpty()
 

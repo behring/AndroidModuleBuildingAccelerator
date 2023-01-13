@@ -13,7 +13,7 @@ dependencyResolutionManagement {
 //        mavenLocal()
     }
 }
-rootProject.name = "MultiModuleBuildFaster"
+rootProject.name = "AndroidModuleBuildingAccelerator"
 include(":feature:payments")
 include(":feature:home")
 include(":infra:network")
