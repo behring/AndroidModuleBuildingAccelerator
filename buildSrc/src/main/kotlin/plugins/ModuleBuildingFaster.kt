@@ -12,6 +12,7 @@ import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.configurationcache.extensions.capitalized
 import org.gradle.kotlin.dsl.create
 import java.io.File
+import java.net.URI
 import java.util.*
 
 class ModuleBuildingFaster : Plugin<Project> {
@@ -45,11 +46,17 @@ class ModuleBuildingFaster : Plugin<Project> {
 
         target.afterEvaluate {
             moduleSettings = getModuleSettings()
-            addMavenPublishPluginToSubProject(target)
+            initMavenPublishingActions(target)
         }
-
         convertDependencyConfiguration(target)
         configMavenPublishing(target)
+    }
+
+    private fun createOneKeyPublishTask(project: Project) {
+        project.task("oneKeyPublish") {
+            group = "publishing"
+            dependsOn("publishToMavenLocal", "publish")
+        }
     }
 
     private fun createModuleSettingsExtension(target: Project): ModuleSettingsExtension =
@@ -106,9 +113,16 @@ class ModuleBuildingFaster : Plugin<Project> {
     private fun isReplaceToArtifactsDependencyFromProjectDependency(project: Project) =
         (isAndroidLibraryProject(project) && (!isExistWorkspace(project) || getModuleSetting(project.name)?.useByAar ?: false))
 
-    private fun addMavenPublishPluginToSubProject(target: Project) {
+    private fun initMavenPublishingActions(target: Project) {
         getProjects(target).filter { getModuleSetting(it.name) != null }
-            .forEach { it.plugins.apply("maven-publish") }
+            .forEach {
+                addMavenPublishPlugin(it)
+                createOneKeyPublishTask(it)
+            }
+    }
+
+    private fun addMavenPublishPlugin(it: Project) {
+        it.plugins.apply("maven-publish")
     }
 
     private fun convertDependencyConfiguration(target: Project) {
@@ -163,27 +177,39 @@ class ModuleBuildingFaster : Plugin<Project> {
     private fun Project.groupPath() = group.toString().replace(".", "/")
 
     private fun configMavenPublishPluginForModule(project: Project) {
-        getModuleSetting(project.name)?.let { moduleSettings ->
-            moduleSettings.buildVariants.forEach { variant ->
+        getModuleSetting(project.name)?.let { moduleSetting ->
+            moduleSetting.buildVariants.forEach { variant ->
                 val publishingExtension =
                     project.extensions.getByType(PublishingExtension::class.java)
+
+                publishingExtension.repositories {
+                    mavenLocal()
+                    maven {
+                        val releasesRepoUrl = URI(moduleSettingsExtension.mavenReleaseRepoPath)
+                        val snapshotsRepoUrl = URI(moduleSettingsExtension.mavenSnapshotRepoPath)
+                        url = if (moduleSetting.version.endsWith("SNAPSHOT")) snapshotsRepoUrl else releasesRepoUrl
+                    }
+                }
+
                 val publications = publishingExtension.publications
                 if (publications.findByName(variant) != null) {
                     println("Publication $variant has been created for $project")
                     return
                 }
 
-                publications.create(moduleSettings.name + variant.capitalized(), MavenPublication::class.java) {
+                publications.create(moduleSetting.name + variant.capitalized(), MavenPublication::class.java) {
                     val component = project.components.findByName(variant)
                     if (component != null) {
                         from(project.components.findByName(variant))
-                        groupId = moduleSettings.groupId
-                        artifactId = moduleSettings.artifactId
-                        version = moduleSettings.version
+                        groupId = moduleSetting.groupId
+                        artifactId = moduleSetting.artifactId
+                        version = moduleSetting.version
                     } else {
                         println("Can not obtain component $variant from $project, config publication failed.")
                     }
                 }
+
+
             }
         }
     }

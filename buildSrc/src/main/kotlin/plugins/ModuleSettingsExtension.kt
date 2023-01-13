@@ -16,6 +16,9 @@ open class ModuleSetting(val name: String) {
 }
 
 open class ModuleSettingsExtension(val target: Project) {
+    var mavenReleaseRepoPath: String = ""
+    var mavenSnapshotRepoPath: String = ""
+
     var moduleSettings: NamedDomainObjectContainer<ModuleSetting>? = null
 
     open fun moduleSettings(configureClosure: Closure<ModuleSetting>) {

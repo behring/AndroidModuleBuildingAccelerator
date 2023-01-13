@@ -10,6 +10,9 @@ plugins {
 }
 
 buildingFaster {
+    mavenReleaseRepoPath = "https://xxx.xxx.xxx/repos/releases"
+    mavenSnapshotRepoPath = "https://xxx.xxx.xxx/repos/snapshots"
+
     moduleSettings {
         home {
             groupId = "cn.zhaolin.home"
