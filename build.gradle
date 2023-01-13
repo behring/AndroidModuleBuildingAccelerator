@@ -29,5 +29,13 @@ buildingAccelerator {
             useByAar = false
             buildVariants("debug", "release")
         }
+
+        proton {
+            groupId = "cn.zhaolin.proton"
+            version = "1.4.0"
+            artifactId = "proton"
+            useByAar = false
+            buildVariants("debug", "release")
+        }
     }
 }
