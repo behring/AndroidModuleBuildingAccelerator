@@ -12,7 +12,6 @@ import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.configurationcache.extensions.capitalized
 import java.io.File
 import java.util.*
-import kotlin.NoSuchElementException
 
 class ModuleBuildingFaster : Plugin<Project> {
 
@@ -32,7 +31,6 @@ class ModuleBuildingFaster : Plugin<Project> {
         // if the value is null, all android libraries will be disabled for all tasks.
         const val WORKSPACE = "buildingFaster.workspace"
 
-        const val IS_COMPLETELY_MATCH_APP_VARIANTS = false
         const val SEPARATOR = "-"
         val SKIP_PARENT_PROJECT_PATH = listOf(
             ":feature",
@@ -42,7 +40,6 @@ class ModuleBuildingFaster : Plugin<Project> {
 
     private lateinit var configProperties: Properties
     private var artifacts: List<Artifact> = emptyList()
-    private var appVariantNames: List<String> = emptyList()
     private var nonWorkspaceProjects: List<Project> = emptyList()
 
     override fun apply(target: Project) {
@@ -51,20 +48,19 @@ class ModuleBuildingFaster : Plugin<Project> {
         if (!isEnablePlugin()) return
         nonWorkspaceProjects = getNonWorkspaceProjects(target)
         addMavenPublishPluginToSubProject(target)
+        convertDependencyConfiguration(target)
+        configMavenPublishing(target)
+    }
 
-        getProjects(target).forEach { project ->
-            if (isAndroidLibraryProject(project)) {
-                project.afterEvaluate {
-                    getLibraryExtension(project).publishing.run{
-                        listOf("debug", "release").forEach { libraryVariant ->
-                            singleVariant(libraryVariant)
-                        }
-                    }
+    private fun configMavenPublishing(target: Project) {
+        target.gradle.projectsEvaluated {
+            getProjects(target).forEach { project ->
+                if (isAndroidLibraryProject(project)) {
+                    configDependencyTaskForMavenPublishTasks(project)
+                    configMavenPublishPluginForLibraryWithVariant(project)
                 }
             }
         }
-
-        convertDependencyConfiguration(target)
     }
 
     private fun loadConfigProperties(target: Project) =
@@ -105,26 +101,23 @@ class ModuleBuildingFaster : Plugin<Project> {
         val rootProjectMavenLocalDir = getMavenLocalDirForRootProject(target)
         println("Artifacts directory: $rootProjectMavenLocalDir")
         artifacts = collectExistArtifacts(rootProjectMavenLocalDir)
+        getProjects(target).forEach { project ->
+            project.afterEvaluate {
+                convertProjectDependencyToArtifactDependenciesForProject(project)
+                removeProjectDependencies(project)
 
-        target.gradle.projectsEvaluated {
-            getProjects(target).forEach { project ->
-                if (isAppProject(project)) {
-                    appVariantNames = getAppVariants(project)
-                    convertProjectDependencyToArtifactDependenciesForProject(project)
-                    removeProjectDependencies(project)
-                } else if (isAndroidLibraryProject(project)) {
-                    if (appVariantNames.isEmpty()) println("No variants information collected.")
-
-                    configDependencyTaskForMavenPublishTasks(project)
-                    configMavenPublishPluginForLibraryWithVariant(project)
-                    convertProjectDependencyToArtifactDependenciesForProject(project)
-                    removeProjectDependencies(project)
-
+                if (isAndroidLibraryProject(project)) {
+                    configAndroidPublishingVariants(project)
                     tryDisableAllTasksForNonWorkspaceProject(project)
-
-                } else {
-                    println("This project is not a app or android module. project name: ${project.name}")
                 }
+            }
+        }
+    }
+
+    private fun configAndroidPublishingVariants(project: Project) {
+        getAndroidLibraryVariants(project).forEach { libraryVariant ->
+            getLibraryExtension(project).publishing.run {
+                singleVariant(libraryVariant)
             }
         }
     }
@@ -144,11 +137,7 @@ class ModuleBuildingFaster : Plugin<Project> {
         getImplementationConfiguration(project)?.dependencies?.forEach { dependency ->
             if (dependency is ProjectDependency && !isExistWorkspace(dependency.dependencyProject)) {
                 println("$project depends on ${dependency.dependencyProject}")
-                if (IS_COMPLETELY_MATCH_APP_VARIANTS) {
-                    convertDependencyConfigurationBasedOnAppVariants(project, dependency)
-                } else {
-                    convertDependencyConfigurationBasedOnExistArtifacts(project, dependency)
-                }
+                convertDependencyConfigurationBasedOnExistArtifacts(project, dependency)
             }
         }
     }
@@ -159,18 +148,6 @@ class ModuleBuildingFaster : Plugin<Project> {
     ) {
         if (isExistArtifacts(dependency.dependencyProject)) {
             convertProjectDependencyToArtifactDependenciesWithExistingArtifacts(
-                project,
-                dependency.dependencyProject
-            )
-        } else println("Project ${dependency.dependencyProject} have not corresponding artifacts，please generate them with publish task.")
-    }
-
-    private fun convertDependencyConfigurationBasedOnAppVariants(
-        project: Project,
-        dependency: ProjectDependency
-    ) {
-        if (isExistAllAppVariantArtifacts(dependency.dependencyProject)) {
-            convertProjectDependencyToArtifactDependenciesWithAppVariants(
                 project,
                 dependency.dependencyProject
             )
@@ -218,21 +195,22 @@ class ModuleBuildingFaster : Plugin<Project> {
 
     private fun configDependencyTaskForMavenPublishTasks(project: Project) {
         getAndroidLibraryVariants(project).forEach { libraryVariant ->
-            project.tasks.whenTaskAdded {
-                val assembleTaskPath = "${project.path}:assemble${libraryVariant.capitalized()}"
-                val assembleTask = project.tasks.findByPath(assembleTaskPath)
-                if (assembleTask == null) {
-                    println("$assembleTaskPath is not exist. can not publish the corresponding artifact.")
-                    return@whenTaskAdded
-                }
+            val assembleTaskPath = "${project.path}:assemble${libraryVariant.capitalized()}"
+            val assembleTask = project.tasks.findByPath(assembleTaskPath)
 
-                if (name.startsWith(
+            if (assembleTask == null) {
+                println("$assembleTaskPath is not exist. can not publish the corresponding artifact.")
+                return
+            }
+
+            project.tasks.forEach { task ->
+                if (task.name.startsWith(
                         "publish${
                             project.path.convertToUniqueProjectName().capitalized()
                         }${libraryVariant.capitalized()}PublicationTo"
                     )
                 ) {
-                    dependsOn(assembleTask)
+                    task.dependsOn(assembleTask)
                 }
             }
         }
@@ -262,34 +240,6 @@ class ModuleBuildingFaster : Plugin<Project> {
 
     private fun isExistArtifacts(project: Project) = getArtifacts(project).isNotEmpty()
 
-    private fun isExistAllAppVariantArtifacts(project: Project) =
-        appVariantNames.all { variantName ->
-            artifacts.any { artifact ->
-                artifact.run {
-                    projectName == project.name && buildVariant == variantName && version == project.version
-                }
-            }.apply {
-                if (!this) println("artifact ${project.name}-${variantName}-${project.version}.aar is not exists in MavenLocal repository. can't convert to artifact dependency.")
-            }
-        }
-
-    private fun convertProjectDependencyToArtifactDependenciesWithAppVariants(
-        project: Project,
-        dependencyProject: Project
-    ) {
-        appVariantNames.forEach { appVariantName ->
-            println(
-                "[Converting based on all variants] Convert project" +
-                        " dependency to artifact with ${appVariantName}Implementation(${dependencyProject.rootProject.group}:${dependencyProject.path.convertToUniqueProjectName()}-$appVariantName:${dependencyProject.version}) for $project"
-            )
-
-            project.dependencies.add(
-                "${appVariantName}Implementation",
-                "${dependencyProject.rootProject.group}:${dependencyProject.path.convertToUniqueProjectName()}-$appVariantName:${dependencyProject.version}"
-            )
-        }
-    }
-
     // https://developer.android.com/studio/build#sourcesets
     private fun convertProjectDependencyToArtifactDependenciesWithExistingArtifacts(
         project: Project,
@@ -312,32 +262,18 @@ class ModuleBuildingFaster : Plugin<Project> {
     private fun isAndroidLibraryProject(project: Project) =
         project.extensions.findByType(LibraryExtension::class.java) != null
 
-    private fun getOutputFile(project: Project, variantName: String): File? {
-        return try {
-            project.extensions.findByType(LibraryExtension::class.java)?.libraryVariants?.first {
-                it.name.equals(variantName)
-            }?.outputs?.first()?.outputFile
-        } catch (e: NoSuchElementException) {
-            null
-        }
-    }
-
     private fun isAppProject(project: Project) =
         project.extensions.findByType(AppExtension::class.java) != null
-
-    private fun getAppVariants(project: Project) =
-        project.extensions.findByType(AppExtension::class.java)!!.applicationVariants.map { variant ->
-            variant.name
-        }
 
     private fun getLibraryExtension(project: Project): LibraryExtension {
         return project.extensions.findByType(LibraryExtension::class.java)!!
     }
 
     private fun getAndroidLibraryVariants(project: Project) =
-        getLibraryExtension(project).libraryVariants.map { variant ->
-            variant.name
-        }
+//        getLibraryExtension(project).libraryVariants.map { variant ->
+//            variant.name
+//        }
+        listOf("debug", "release")
 
     private fun getImplementationConfiguration(project: Project): Configuration? {
         return try {
