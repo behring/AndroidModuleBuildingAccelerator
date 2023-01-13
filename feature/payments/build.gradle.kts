@@ -31,7 +31,8 @@ android {
 }
 
 dependencies {
-    compileOnly(projects.infra.network)
+    implementation(projects.infra.network)
+    implementation(projects.ui.proton)
     implementation("androidx.core:core-ktx:1.7.0")
     implementation("androidx.appcompat:appcompat:1.5.1")
     implementation("com.google.android.material:material:1.7.0")
