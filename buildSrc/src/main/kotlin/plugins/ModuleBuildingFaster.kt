@@ -163,8 +163,8 @@ class ModuleBuildingFaster : Plugin<Project> {
     private fun Project.groupPath() = group.toString().replace(".", "/")
 
     private fun configMavenPublishPluginForModule(project: Project) {
-        getModuleSetting(project.name)?.run {
-            buildVariants.forEach { variant ->
+        getModuleSetting(project.name)?.let { moduleSettings ->
+            moduleSettings.buildVariants.forEach { variant ->
                 val publishingExtension =
                     project.extensions.getByType(PublishingExtension::class.java)
                 val publications = publishingExtension.publications
@@ -173,13 +173,13 @@ class ModuleBuildingFaster : Plugin<Project> {
                     return
                 }
 
-                publications.create(name + variant.capitalized(), MavenPublication::class.java) {
+                publications.create(moduleSettings.name + variant.capitalized(), MavenPublication::class.java) {
                     val component = project.components.findByName(variant)
                     if (component != null) {
                         from(project.components.findByName(variant))
-                        groupId = groupId
-                        artifactId = artifactId
-                        version = version
+                        groupId = moduleSettings.groupId
+                        artifactId = moduleSettings.artifactId
+                        version = moduleSettings.version
                     } else {
                         println("Can not obtain component $variant from $project, config publication failed.")
                     }
