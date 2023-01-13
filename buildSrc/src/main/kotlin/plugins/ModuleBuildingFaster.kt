@@ -49,13 +49,16 @@ class ModuleBuildingFaster : Plugin<Project> {
         if (!isEnablePlugin()) return
         target.gradle.addListener(TimingsListener())
         nonWorkspaceProjects = getNonWorkspaceProjects(target)
-
-        moduleSettingsExtension = target.extensions.create("buildingFaster", target)
-
+        moduleSettingsExtension = createModuleSettingsExtension(target)
         addMavenPublishPluginToSubProject(target)
         convertDependencyConfiguration(target)
         configMavenPublishing(target)
     }
+
+    private fun createModuleSettingsExtension(target: Project): ModuleSettingsExtension =
+        target.extensions.create("buildingFaster", target)
+
+    private fun getModuleSettings() = moduleSettingsExtension.moduleSettings.toList()
 
     private fun configMavenPublishing(target: Project) {
         target.gradle.projectsEvaluated {
@@ -175,7 +178,7 @@ class ModuleBuildingFaster : Plugin<Project> {
             }
 
             publications.create(
-                project.path.convertToUniqueProjectName() + libraryVariant.capitalized(),
+                project.name.convertToCamelNaming() + libraryVariant.capitalized(),
                 MavenPublication::class.java
             ) {
                 val component = project.components.findByName(libraryVariant)
@@ -183,7 +186,7 @@ class ModuleBuildingFaster : Plugin<Project> {
                     from(project.components.findByName(libraryVariant))
                     groupId = project.rootProject.group.toString()
                     artifactId =
-                        "${project.path.convertToUniqueProjectName()}$SEPARATOR$libraryVariant"
+                        "${project.name.convertToCamelNaming()}$SEPARATOR$libraryVariant"
                     version = project.version.toString()
                 } else {
                     println("Can not obtain component $libraryVariant from $project, config publication failed.")
@@ -192,11 +195,9 @@ class ModuleBuildingFaster : Plugin<Project> {
         }
     }
 
-    private fun String.convertToUniqueProjectName() =
-        split(":").joinToString("") { it.convertToCamelNaming() }.decapitalize()
-
+ 
     private fun String.convertToCamelNaming() =
-        split(SEPARATOR).joinToString("") { it.toLowerCase(Locale.ROOT).capitalized() }
+        split(SEPARATOR).joinToString("") { it.toLowerCase(Locale.ROOT).capitalized() }.decapitalize()
 
     private fun configDependencyTaskForMavenPublishTasks(project: Project) {
         getAndroidLibraryVariants(project).forEach { libraryVariant ->
@@ -211,7 +212,7 @@ class ModuleBuildingFaster : Plugin<Project> {
             project.tasks.forEach { task ->
                 if (task.name.startsWith(
                         "publish${
-                            project.path.convertToUniqueProjectName().capitalized()
+                            project.name.convertToCamelNaming().capitalized()
                         }${libraryVariant.capitalized()}PublicationTo"
                     )
                 ) {
@@ -241,7 +242,7 @@ class ModuleBuildingFaster : Plugin<Project> {
 
 
     private fun getArtifacts(project: Project) =
-        artifacts.filter { it.projectName == project.path.convertToUniqueProjectName() }
+        artifacts.filter { it.projectName == project.name.convertToCamelNaming() }
 
     private fun isExistArtifacts(project: Project) = getArtifacts(project).isNotEmpty()
 
@@ -253,7 +254,7 @@ class ModuleBuildingFaster : Plugin<Project> {
         getArtifacts(dependencyProject).forEach {
             println(
                 "[Converting based on existing artifacts] Convert project" +
-                        " dependency to artifact with ${it.buildVariant}Implementation(${dependencyProject.rootProject.group}:${dependencyProject.path.convertToUniqueProjectName()}-${it.buildVariant}:${it.version}) for $project"
+                        " dependency to artifact with ${it.buildVariant}Implementation(${dependencyProject.rootProject.group}:${it.projectName}-${it.buildVariant}:${it.version}) for $project"
             )
             project.dependencies.add(
                 "${it.buildVariant}Implementation",
