@@ -18,6 +18,7 @@ include(":feature:payments")
 include(":feature:home")
 include(":infra:network")
 include(":infra:analytics")
+include(":ui:proton")
 include(":app")
 
 enableFeaturePreview("VERSION_CATALOGS")
