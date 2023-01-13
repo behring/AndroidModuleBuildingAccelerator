@@ -10,6 +10,7 @@ import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.configurationcache.extensions.capitalized
+import org.gradle.kotlin.dsl.create
 import java.io.File
 import java.util.*
 
@@ -41,12 +42,16 @@ class ModuleBuildingFaster : Plugin<Project> {
     private lateinit var configProperties: Properties
     private var artifacts: List<Artifact> = emptyList()
     private var nonWorkspaceProjects: List<Project> = emptyList()
+    private lateinit var moduleSettingsExtension:ModuleSettingsExtension
 
     override fun apply(target: Project) {
-        target.gradle.addListener(TimingsListener())
         configProperties = loadConfigProperties(target)
         if (!isEnablePlugin()) return
+        target.gradle.addListener(TimingsListener())
         nonWorkspaceProjects = getNonWorkspaceProjects(target)
+
+        moduleSettingsExtension = target.extensions.create("buildingFaster", target)
+
         addMavenPublishPluginToSubProject(target)
         convertDependencyConfiguration(target)
         configMavenPublishing(target)
