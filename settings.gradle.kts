@@ -10,7 +10,7 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-//        mavenLocal()
+        mavenLocal()
     }
 }
 rootProject.name = "AndroidModuleBuildingAccelerator"
