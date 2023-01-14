@@ -6,17 +6,17 @@ import org.gradle.api.artifacts.Configuration
 import org.gradle.kotlin.dsl.get
 import com.android.build.gradle.AppExtension
 import com.android.build.gradle.LibraryExtension
-import org.gradle.api.artifacts.Dependency
 import org.gradle.api.artifacts.ProjectDependency
-import org.gradle.api.internal.artifacts.dependencies.DefaultDependencyArtifact
 import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.configurationcache.extensions.capitalized
 import org.gradle.kotlin.dsl.add
 import org.gradle.kotlin.dsl.create
+import org.gradle.kotlin.dsl.exclude
 import java.io.File
 import java.net.URI
 import java.util.*
+
 class ModuleBuildingAccelerator : Plugin<Project> {
     companion object {
         // All project dependencies will be converted to artifacts dependencies when this value is true.
@@ -37,7 +37,8 @@ class ModuleBuildingAccelerator : Plugin<Project> {
     }
 
     private lateinit var configProperties: Properties
-    private var nonWorkspaceProjects: List<Project> = emptyList()
+    private lateinit var workspaceProjects: List<Project>
+    private lateinit var nonWorkspaceProjects: List<Project>
     private lateinit var moduleSettingsExtension: ModuleSettingsExtension
     private lateinit var moduleSettings: List<ModuleSetting>
 
@@ -45,7 +46,9 @@ class ModuleBuildingAccelerator : Plugin<Project> {
         configProperties = loadConfigProperties(target)
         if (!isEnablePlugin()) return
         target.gradle.addListener(TimingsListener())
-        nonWorkspaceProjects = getNonWorkspaceProjects(target)
+        val (workspaceProjects, nonWorkspaceProjects) = splitWorkspaceAndNonWorkspaceProjects(target)
+        this.workspaceProjects = workspaceProjects
+        this.nonWorkspaceProjects = nonWorkspaceProjects
         moduleSettingsExtension = createModuleSettingsExtension(target)
 
         target.afterEvaluate {
@@ -91,24 +94,25 @@ class ModuleBuildingAccelerator : Plugin<Project> {
         getModuleSetting(dependencyProject.name)?.run {
             val variants: List<String> = if (isAppProject(project)) {
                 getAppVariants(project)
-            } else if(isAndroidLibraryProject(project)) {
+            } else if (isAndroidLibraryProject(project)) {
                 getModuleVariants(project)
             } else {
                 println("Unknown project type. project: $project")
                 return
             }
             variants.forEach { variant ->
-                println(
-                    "Converting project" +
-                            " dependency to artifact with ${variant}Implementation(\"${groupId}:${artifactId}:${version}\") for $project"
-                )
+                println("Converting project dependency to artifact with ${variant}Implementation(\"${groupId}:${artifactId}:${version}\") for $project")
 
                 val implementation = project.configurations.maybeCreate("${variant}Implementation")
                 project.dependencies.add(
                     implementation.name,
                     "${groupId}:${artifactId}:${version}"
                 ) {
-                    implementation.exclude(mapOf("group" to "cn.zhaolin.proton", "module" to "proton"))
+                    workspaceProjects.mapNotNull {
+                        getModuleSetting(it.name)
+                    }.forEach {
+                        implementation.exclude(it.groupId, it.artifactId)
+                    }
                 }
             }
         }
@@ -190,14 +194,14 @@ class ModuleBuildingAccelerator : Plugin<Project> {
 
     private fun getModuleVariants(project: Project): List<String> {
         // the libraryVariants needs to be obtained into gradle.projectsEvaluated hook.
-        return  project.extensions.findByType(LibraryExtension::class.java)!!.libraryVariants.map { variant ->
+        return project.extensions.findByType(LibraryExtension::class.java)!!.libraryVariants.map { variant ->
             variant.name
         }
     }
 
     private fun getAppVariants(project: Project): List<String> {
         // the libraryVariants needs to be obtained into gradle.projectsEvaluated hook.
-        return  project.extensions.findByType(AppExtension::class.java)!!.applicationVariants.map { variant ->
+        return project.extensions.findByType(AppExtension::class.java)!!.applicationVariants.map { variant ->
             variant.name
         }
     }
@@ -207,12 +211,18 @@ class ModuleBuildingAccelerator : Plugin<Project> {
             load(File(target.rootDir.absolutePath + "/local.properties").inputStream())
         }
 
-    private fun getNonWorkspaceProjects(target: Project): List<Project> {
-        return getProjects(target).filterNot {
-            getWorkspaceModulePaths().contains(
-                it.path
-            )
+    private fun splitWorkspaceAndNonWorkspaceProjects(target: Project): Pair<List<Project>, List<Project>> {
+        val workspaceProjects = mutableListOf<Project>()
+        val nonWorkspaceProjects = mutableListOf<Project>()
+
+        getProjects(target).forEach {
+            if( getWorkspaceModulePaths().contains(it.path)) {
+                workspaceProjects.add(it)
+            } else {
+                nonWorkspaceProjects.add(it)
+            }
         }
+        return Pair(workspaceProjects, nonWorkspaceProjects)
     }
 
     private fun getWorkspaceModulePaths() =
@@ -253,8 +263,6 @@ class ModuleBuildingAccelerator : Plugin<Project> {
             (it is ProjectDependency) && isReplaceToArtifactsDependencyFromProjectDependency(it.dependencyProject)
         }
     }
-
-    private fun Project.groupPath() = group.toString().replace(".", "/")
 
     private fun String.convertToCamelNaming() =
         split(SEPARATOR).joinToString("") { it.toLowerCase(Locale.ROOT).capitalized() }
