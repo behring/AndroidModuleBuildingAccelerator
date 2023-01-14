@@ -24,6 +24,7 @@ class ModuleBuildingAccelerator : Plugin<Project> {
         // if the value is null, all android libraries will be disabled for all tasks.
         const val WORKSPACE = "buildingAccelerator.workspace"
 
+        const val MAVEN_PUBLICATION_NAME = "allVariants"
         const val SEPARATOR = "-"
         val SKIP_PARENT_PROJECT_PATH = listOf(
             ":feature",
@@ -85,14 +86,14 @@ class ModuleBuildingAccelerator : Plugin<Project> {
         dependencyProject: Project
     ) {
         getModuleSetting(dependencyProject.name)?.run {
-            buildVariants.forEach { buildVariant ->
+            getModuleVariants(project).forEach { variant ->
                 println(
                     "Converting project" +
-                            " dependency to artifact with ${buildVariant}Implementation(\"${groupId}:${artifactId}-${buildVariant}:${version}\") for $project"
+                            " dependency to artifact with ${variant}Implementation(\"${groupId}:${artifactId}:${version}\") for $project"
                 )
                 project.dependencies.add(
-                    "${buildVariant}Implementation",
-                    "${groupId}:${artifactId}-${buildVariant}:${version}"
+                    "${variant}Implementation",
+                    "${groupId}:${artifactId}:${version}"
                 )
             }
         }
@@ -100,9 +101,9 @@ class ModuleBuildingAccelerator : Plugin<Project> {
 
     private fun configAndroidPublishingVariants(project: Project) {
         if (isAndroidLibraryProject(project)) {
-            getModuleVariants(project).forEach { libraryVariant ->
-                getLibraryExtension(project).publishing.run {
-                    singleVariant(libraryVariant)
+            getLibraryExtension(project).publishing.run {
+                multipleVariants {
+                    allVariants()
                 }
             }
         }
@@ -121,51 +122,37 @@ class ModuleBuildingAccelerator : Plugin<Project> {
     }
 
     private fun configDependencyTaskForMavenPublishTasks(project: Project) {
-        getModuleVariants(project).forEach { variant ->
-            project.tasks.whenTaskAdded {
-                if (name.startsWith(
-                        "publish${
-                            project.name.convertToCamelNaming()
-                        }${variant.capitalized()}PublicationTo"
-                    )
-                ) {
-                    dependsOn("${project.path}:assemble${variant.capitalized()}")
-                }
+        project.tasks.whenTaskAdded {
+            if (name.startsWith("publish${MAVEN_PUBLICATION_NAME}PublicationTo")) {
+                dependsOn("${project.path}:assemble")
             }
         }
     }
 
     private fun configMavenPublishPluginForModule(project: Project) {
         getModuleSetting(project.name)?.let { moduleSetting ->
-            moduleSetting.buildVariants.forEach { variant ->
-                val publishingExtension =
-                    project.extensions.getByType(PublishingExtension::class.java)
+            val publishingExtension =
+                project.extensions.getByType(PublishingExtension::class.java)
 
-                publishingExtension.repositories {
-                    mavenLocal()
-                    maven {
-                        val releasesRepoUrl = URI(moduleSettingsExtension.mavenReleaseRepoPath)
-                        val snapshotsRepoUrl = URI(moduleSettingsExtension.mavenSnapshotRepoPath)
-                        url = if (moduleSetting.version.endsWith("SNAPSHOT")) snapshotsRepoUrl else releasesRepoUrl
-                    }
+            publishingExtension.repositories {
+                mavenLocal()
+                maven {
+                    val releasesRepoUrl = URI(moduleSettingsExtension.mavenReleaseRepoPath)
+                    val snapshotsRepoUrl = URI(moduleSettingsExtension.mavenSnapshotRepoPath)
+                    url = if (moduleSetting.version.endsWith("SNAPSHOT")) snapshotsRepoUrl else releasesRepoUrl
                 }
+            }
 
-                val publications = publishingExtension.publications
-                if (publications.findByName(variant) != null) {
-                    println("Publication $variant has been created for $project")
-                    return
-                }
-
-                publications.create(moduleSetting.name + variant.capitalized(), MavenPublication::class.java) {
-                    val component = project.components.findByName(variant)
-                    if (component != null) {
-                        from(project.components.findByName(variant))
-                        groupId = moduleSetting.groupId
-                        artifactId = "${moduleSetting.artifactId}-${variant}"
-                        version = moduleSetting.version
-                    } else {
-                        println("Can not obtain component $variant from $project, config publication failed.")
-                    }
+            val publications = publishingExtension.publications
+            publications.create(MAVEN_PUBLICATION_NAME, MavenPublication::class.java) {
+                val component = project.components.findByName("default")
+                if (component != null) {
+                    from(project.components.findByName("default"))
+                    groupId = moduleSetting.groupId
+                    artifactId = moduleSetting.artifactId
+                    version = moduleSetting.version
+                } else {
+                    println("Can not obtain component \"default\" from $project, config publication failed.")
                 }
             }
         }
@@ -187,7 +174,10 @@ class ModuleBuildingAccelerator : Plugin<Project> {
         moduleSettings.firstOrNull() { it.name == name.convertToCamelNaming().decapitalize(Locale.ROOT) }
 
     private fun getModuleVariants(project: Project): List<String> {
-        return getModuleSetting(project.name)?.buildVariants.orEmpty()
+        // the libraryVariants needs to be obtained into gradle.projectsEvaluated hook.
+        return  project.extensions.findByType(LibraryExtension::class.java)!!.libraryVariants.map { variant ->
+            variant.name
+        }
     }
 
     private fun loadConfigProperties(target: Project) =

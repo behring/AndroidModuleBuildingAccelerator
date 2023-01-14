@@ -1,14 +1,12 @@
-package cn.behring.home
+package cn.behring.proton
 
 import androidx.compose.material.Button
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
-import cn.behring.network.NetworkButton
 
 @Composable
-fun HomeButton() {
-    Button(onClick = { }) {
-        Text(text = "HomeButton")
+fun ProtonButton() {
+    Button(onClick = { ProtonText().click() }) {
+        Text(text = "ProtonButton")
     }
-    NetworkButton()
 }

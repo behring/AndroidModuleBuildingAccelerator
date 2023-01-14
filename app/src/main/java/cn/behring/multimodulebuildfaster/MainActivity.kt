@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import cn.behring.home.HomeButton
 import cn.behring.multimodulebuildfaster.ui.theme.AppTheme
+import cn.behring.proton.ProtonButton
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -23,7 +24,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colors.background
                 ) {
-                    HomeButton()
+                    ProtonButton()
                     Greeting("Android")
                 }
             }
