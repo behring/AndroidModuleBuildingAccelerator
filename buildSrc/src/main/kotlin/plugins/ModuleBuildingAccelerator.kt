@@ -86,7 +86,15 @@ class ModuleBuildingAccelerator : Plugin<Project> {
         dependencyProject: Project
     ) {
         getModuleSetting(dependencyProject.name)?.run {
-            getModuleVariants(project).forEach { variant ->
+            val variants: List<String> = if (isAppProject(project)) {
+                getAppVariants(project)
+            } else if(isAndroidLibraryProject(project)) {
+                getModuleVariants(project)
+            } else {
+                println("Unknown project type. project: $project")
+                return
+            }
+            variants.forEach { variant ->
                 println(
                     "Converting project" +
                             " dependency to artifact with ${variant}Implementation(\"${groupId}:${artifactId}:${version}\") for $project"
@@ -180,6 +188,13 @@ class ModuleBuildingAccelerator : Plugin<Project> {
         }
     }
 
+    private fun getAppVariants(project: Project): List<String> {
+        // the libraryVariants needs to be obtained into gradle.projectsEvaluated hook.
+        return  project.extensions.findByType(AppExtension::class.java)!!.applicationVariants.map { variant ->
+            variant.name
+        }
+    }
+
     private fun loadConfigProperties(target: Project) =
         Properties().apply {
             load(File(target.rootDir.absolutePath + "/local.properties").inputStream())
@@ -201,8 +216,7 @@ class ModuleBuildingAccelerator : Plugin<Project> {
         (configProperties.getProperty(PLUGIN_ENABLE_SWITCH_KEY) ?: "false").toBoolean()
 
     private fun tryDisableAllTasksForNonWorkspaceProject(project: Project) {
-        if (isReplaceToArtifactsDependencyFromProjectDependency(project)
-        ) {
+        if (isReplaceToArtifactsDependencyFromProjectDependency(project)) {
             project.tasks.forEach { it.enabled = false }
             println("disable tasks for ${project.path}")
         }
