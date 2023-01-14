@@ -14,7 +14,6 @@ import org.gradle.kotlin.dsl.create
 import java.io.File
 import java.net.URI
 import java.util.*
-
 class ModuleBuildingAccelerator : Plugin<Project> {
     companion object {
         // All project dependencies will be converted to artifacts dependencies when this value is true.
@@ -28,7 +27,8 @@ class ModuleBuildingAccelerator : Plugin<Project> {
         const val SEPARATOR = "-"
         val SKIP_PARENT_PROJECT_PATH = listOf(
             ":feature",
-            ":infra"
+            ":infra",
+            ":ui"
         )
     }
 
@@ -56,22 +56,22 @@ class ModuleBuildingAccelerator : Plugin<Project> {
     private fun convertDependencyConfiguration(target: Project) {
         getProjects(target).forEach { project ->
             project.afterEvaluate {
+                configAndroidPublishingVariants(project)
+                tryDisableAllTasksForNonWorkspaceProject(project)
+            }
+
+            project.gradle.projectsEvaluated {
                 convertProjectDependencyToArtifactDependenciesForProject(project)
                 removeProjectDependencies(project)
-
-                if (isAndroidLibraryProject(project)) {
-                    configAndroidPublishingVariants(project)
-                    tryDisableAllTasksForNonWorkspaceProject(project)
-                }
             }
         }
     }
 
     private fun convertProjectDependencyToArtifactDependenciesForProject(project: Project) {
         getImplementationConfiguration(project)?.dependencies?.forEach { dependency ->
-            if (dependency is ProjectDependency && !isExistWorkspace(dependency.dependencyProject)) {
+            if (dependency is ProjectDependency && isReplaceToArtifactsDependencyFromProjectDependency(dependency.dependencyProject)) {
                 println("$project depends on ${dependency.dependencyProject}")
-                convertProjectDependencyToArtifactDependenciesWithExistingArtifacts(
+                convertProjectDependencyToArtifactDependencies(
                     project,
                     dependency.dependencyProject
                 )
@@ -80,7 +80,7 @@ class ModuleBuildingAccelerator : Plugin<Project> {
     }
 
     // https://developer.android.com/studio/build#sourcesets
-    private fun convertProjectDependencyToArtifactDependenciesWithExistingArtifacts(
+    private fun convertProjectDependencyToArtifactDependencies(
         project: Project,
         dependencyProject: Project
     ) {
@@ -99,9 +99,11 @@ class ModuleBuildingAccelerator : Plugin<Project> {
     }
 
     private fun configAndroidPublishingVariants(project: Project) {
-        getModuleVariants(project).forEach { libraryVariant ->
-            getLibraryExtension(project).publishing.run {
-                singleVariant(libraryVariant)
+        if (isAndroidLibraryProject(project)) {
+            getModuleVariants(project).forEach { libraryVariant ->
+                getLibraryExtension(project).publishing.run {
+                    singleVariant(libraryVariant)
+                }
             }
         }
     }
@@ -216,8 +218,9 @@ class ModuleBuildingAccelerator : Plugin<Project> {
         }
     }
 
-    private fun isReplaceToArtifactsDependencyFromProjectDependency(project: Project) =
-        (isAndroidLibraryProject(project) && (!isExistWorkspace(project) || getModuleSetting(project.name)?.useByAar ?: false))
+    private fun isReplaceToArtifactsDependencyFromProjectDependency(project: Project): Boolean {
+       return (isAndroidLibraryProject(project) && !isExistWorkspace(project) && getModuleSetting(project.name)?.useByAar ?: false)
+    }
 
     private fun initMavenPublishingActions(target: Project) {
         getProjects(target).filter { getModuleSetting(it.name) != null }
