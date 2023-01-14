@@ -2,6 +2,6 @@ package cn.behring.proton
 
 class ProtonText {
     fun click() {
-        println("this is release proton text")
+        println("this is release zhaolin text")
     }
 }

@@ -6,10 +6,13 @@ import org.gradle.api.artifacts.Configuration
 import org.gradle.kotlin.dsl.get
 import com.android.build.gradle.AppExtension
 import com.android.build.gradle.LibraryExtension
+import org.gradle.api.artifacts.Dependency
 import org.gradle.api.artifacts.ProjectDependency
+import org.gradle.api.internal.artifacts.dependencies.DefaultDependencyArtifact
 import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.configurationcache.extensions.capitalized
+import org.gradle.kotlin.dsl.add
 import org.gradle.kotlin.dsl.create
 import java.io.File
 import java.net.URI
@@ -99,10 +102,14 @@ class ModuleBuildingAccelerator : Plugin<Project> {
                     "Converting project" +
                             " dependency to artifact with ${variant}Implementation(\"${groupId}:${artifactId}:${version}\") for $project"
                 )
+
+                val implementation = project.configurations.maybeCreate("${variant}Implementation")
                 project.dependencies.add(
-                    "${variant}Implementation",
+                    implementation.name,
                     "${groupId}:${artifactId}:${version}"
-                )
+                ) {
+                    implementation.exclude(mapOf("group" to "cn.zhaolin.proton", "module" to "proton"))
+                }
             }
         }
     }
