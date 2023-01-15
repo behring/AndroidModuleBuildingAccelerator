@@ -27,6 +27,8 @@ class ModuleBuildingAccelerator : Plugin<Project> {
         // if the value is null, all android libraries will be disabled for all tasks.
         const val WORKSPACE = "buildingAccelerator.workspace"
 
+        const val BUILDING_ACCELERATOR_EXTENSION = "buildingAccelerator"
+
         const val MAVEN_PUBLICATION_NAME = "allVariants"
         const val SEPARATOR = "-"
         val SKIP_PARENT_PROJECT_PATH = listOf(
@@ -185,7 +187,7 @@ class ModuleBuildingAccelerator : Plugin<Project> {
     }
 
     private fun createModuleSettingsExtension(target: Project): ModuleSettingsExtension =
-        target.extensions.create("buildingAccelerator", target)
+        target.extensions.create(BUILDING_ACCELERATOR_EXTENSION, target)
 
     private fun getModuleSettings() = moduleSettingsExtension.moduleSettings?.toList().orEmpty()
 
