@@ -10,9 +10,13 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+
         mavenLocal()
+        maven {url = uri("https://xxx.xxx.xxx/releases")}
+        maven {url = uri("https://xxx.xxx.xxx/snapshots")}
     }
 }
+
 rootProject.name = "AndroidModuleBuildingAccelerator"
 include(":feature:payments")
 include(":feature:home")

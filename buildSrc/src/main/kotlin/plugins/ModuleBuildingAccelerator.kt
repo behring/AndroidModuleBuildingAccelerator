@@ -66,6 +66,7 @@ class ModuleBuildingAccelerator : Plugin<Project> {
         getProjects(target).forEach { project ->
             project.afterEvaluate {
                 configAndroidPublishingVariants(project)
+                // this will not disable the relevant publishing tasks due to these tasks will be added later.
                 tryDisableAllTasksForNonWorkspaceProject(project)
             }
 
