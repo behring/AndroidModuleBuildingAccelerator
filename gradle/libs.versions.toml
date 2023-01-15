@@ -1,8 +1,15 @@
 [versions]
-android-build-gradle = "7.3.1"
-compose-ui-version = "1.1.1"
+android_build_gradle = "7.3.1"
+compose_ui_version = "1.1.1"
 gson = "2.8.7"
+nav_version = "2.5.3"
 
 [libraries]
 android-build-gradle = { module = "com.android.tools.build:gradle", version.ref = "android-build-gradle" }
 gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
+navigation-fragment = { module = "androidx.navigation:navigation-fragment-ktx", version.ref = "nav_version" }
+navigation-ui = { module = "androidx.navigation:navigation-ui-ktx", version.ref = "nav_version" }
+navigation-safe-args-gradle-plugin = { module = "androidx.navigation:navigation-safe-args-gradle-plugin", version.ref = "nav_version" }
+
+[bundles]
+navigation = ["navigation-fragment", "navigation-ui"]

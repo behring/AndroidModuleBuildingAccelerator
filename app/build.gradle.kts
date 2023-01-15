@@ -4,6 +4,7 @@ import java.io.FileInputStream
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("androidx.navigation.safeargs")
 }
 
 val keystorePropertiesFile = rootProject.file("keystore.properties")
@@ -88,6 +89,8 @@ dependencies {
     implementation(projects.infra.network)
     implementation(projects.infra.analytics)
     implementation(projects.ui.proton)
+
+    implementation(libs.bundles.navigation)
 
     implementation("androidx.activity:activity-compose:1.6.1")
     implementation("androidx.compose.ui:ui:1.3.2")
