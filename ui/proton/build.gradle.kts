@@ -39,8 +39,6 @@ android {
 }
 
 dependencies {
-    compileOnly(projects.infra.network)
-
     implementation("androidx.activity:activity-compose:1.6.1")
     implementation("androidx.compose.ui:ui:1.3.2")
     implementation("androidx.compose.ui:ui-tooling-preview:1.3.2")

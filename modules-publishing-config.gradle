@@ -1,0 +1,41 @@
+buildingAccelerator {
+    mavenReleaseRepoPath = "https://xxx.xxx.xxx/repos/releases"
+    mavenSnapshotRepoPath = "https://xxx.xxx.xxx/repos/snapshots"
+
+    moduleSettings {
+        home {
+            groupId = "cn.zhaolin.home"
+            version = "1.3.2"
+            artifactId = "home"
+            useByAar = true
+        }
+
+        payments {
+            groupId = "cn.zhaolin.payment"
+            version = "1.3.0"
+            artifactId = "payment"
+            useByAar = true
+        }
+
+        network {
+            groupId = "cn.zhaolin.network"
+            version = "1.0.0"
+            artifactId = "network"
+            useByAar = true
+        }
+
+        analytics {
+            groupId = "cn.zhaolin.analytics"
+            version = "1.0.0"
+            artifactId = "analytics"
+            useByAar = true
+        }
+
+        proton {
+            groupId = "cn.zhaolin.proton"
+            version = "1.4.0"
+            artifactId = "proton"
+            useByAar = true
+        }
+    }
+}

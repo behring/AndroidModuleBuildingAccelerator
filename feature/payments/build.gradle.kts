@@ -1,6 +1,7 @@
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
+    id("androidx.navigation.safeargs")
 }
 
 android {
@@ -31,7 +32,10 @@ android {
 }
 
 dependencies {
-    compileOnly(projects.infra.network)
+    implementation(projects.infra.network)
+    implementation(projects.ui.proton)
+
+    implementation(libs.bundles.navigation)
     implementation("androidx.core:core-ktx:1.7.0")
     implementation("androidx.appcompat:appcompat:1.5.1")
     implementation("com.google.android.material:material:1.7.0")

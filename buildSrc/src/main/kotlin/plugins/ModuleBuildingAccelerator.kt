@@ -10,7 +10,9 @@ import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.configurationcache.extensions.capitalized
+import org.gradle.kotlin.dsl.add
 import org.gradle.kotlin.dsl.create
+import org.gradle.kotlin.dsl.exclude
 import java.io.File
 import java.net.URI
 import java.util.*
@@ -25,15 +27,20 @@ class ModuleBuildingAccelerator : Plugin<Project> {
         // if the value is null, all android libraries will be disabled for all tasks.
         const val WORKSPACE = "buildingAccelerator.workspace"
 
+        const val BUILDING_ACCELERATOR_EXTENSION = "buildingAccelerator"
+
+        const val MAVEN_PUBLICATION_NAME = "allVariants"
         const val SEPARATOR = "-"
         val SKIP_PARENT_PROJECT_PATH = listOf(
             ":feature",
-            ":infra"
+            ":infra",
+            ":ui"
         )
     }
 
     private lateinit var configProperties: Properties
-    private var nonWorkspaceProjects: List<Project> = emptyList()
+    private lateinit var workspaceProjects: List<Project>
+    private lateinit var nonWorkspaceProjects: List<Project>
     private lateinit var moduleSettingsExtension: ModuleSettingsExtension
     private lateinit var moduleSettings: List<ModuleSetting>
 
@@ -41,7 +48,9 @@ class ModuleBuildingAccelerator : Plugin<Project> {
         configProperties = loadConfigProperties(target)
         if (!isEnablePlugin()) return
         target.gradle.addListener(TimingsListener())
-        nonWorkspaceProjects = getNonWorkspaceProjects(target)
+        val (workspaceProjects, nonWorkspaceProjects) = splitWorkspaceAndNonWorkspaceProjects(target)
+        this.workspaceProjects = workspaceProjects
+        this.nonWorkspaceProjects = nonWorkspaceProjects
         moduleSettingsExtension = createModuleSettingsExtension(target)
 
         target.afterEvaluate {
@@ -52,24 +61,76 @@ class ModuleBuildingAccelerator : Plugin<Project> {
         configMavenPublishing(target)
     }
 
-    private fun createOneKeyPublishTask(project: Project) {
-        project.task("oneKeyPublish") {
-            group = "publishing"
-            dependsOn("publishToMavenLocal", "publish")
+
+    private fun convertDependencyConfiguration(target: Project) {
+        getProjects(target).forEach { project ->
+            project.afterEvaluate {
+                configAndroidPublishingVariants(project)
+                // this will not disable the relevant publishing tasks due to these tasks will be added later.
+                tryDisableAllTasksForNonWorkspaceProject(project)
+            }
+
+            project.gradle.projectsEvaluated {
+                convertProjectDependencyToArtifactDependenciesForProject(project)
+                removeProjectDependencies(project)
+            }
         }
     }
 
-    private fun createModuleSettingsExtension(target: Project): ModuleSettingsExtension =
-        target.extensions.create("buildingAccelerator", target)
-
-    private fun getModuleSettings() = moduleSettingsExtension.moduleSettings?.toList().orEmpty()
-
-    private fun getModuleSetting(name: String) =
-        moduleSettings.firstOrNull() { it.name == name.convertToCamelNaming().decapitalize(Locale.ROOT) }
-
-    private fun getModuleVariants(project: Project): List<String> {
-        return getModuleSetting(project.name)?.buildVariants.orEmpty()
+    private fun convertProjectDependencyToArtifactDependenciesForProject(project: Project) {
+        getImplementationConfiguration(project)?.dependencies?.forEach { dependency ->
+            if (dependency is ProjectDependency && isReplaceToArtifactsDependencyFromProjectDependency(dependency.dependencyProject)) {
+                println("$project depends on ${dependency.dependencyProject}")
+                convertProjectDependencyToArtifactDependencies(
+                    project,
+                    dependency.dependencyProject
+                )
+            }
+        }
     }
+
+    // https://developer.android.com/studio/build#sourcesets
+    private fun convertProjectDependencyToArtifactDependencies(
+        project: Project,
+        dependencyProject: Project
+    ) {
+        getModuleSetting(dependencyProject.name)?.run {
+            val variants: List<String> = if (isAppProject(project)) {
+                getAppVariants(project)
+            } else if (isAndroidLibraryProject(project)) {
+                getModuleVariants(project)
+            } else {
+                println("Unknown project type. project: $project")
+                return
+            }
+            variants.forEach { variant ->
+                println("Converting project dependency to artifact with ${variant}Implementation(\"${groupId}:${artifactId}:${version}\") for $project")
+
+                val implementation = project.configurations.maybeCreate("${variant}Implementation")
+                project.dependencies.add(
+                    implementation.name,
+                    "${groupId}:${artifactId}:${version}"
+                ) {
+                    workspaceProjects.mapNotNull {
+                        getModuleSetting(it.name)
+                    }.forEach {
+                        implementation.exclude(it.groupId, it.artifactId)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun configAndroidPublishingVariants(project: Project) {
+        if (isAndroidLibraryProject(project)) {
+            getLibraryExtension(project).publishing.run {
+                multipleVariants {
+                    allVariants()
+                }
+            }
+        }
+    }
+
 
     private fun configMavenPublishing(target: Project) {
         target.gradle.projectsEvaluated {
@@ -82,17 +143,89 @@ class ModuleBuildingAccelerator : Plugin<Project> {
         }
     }
 
+    private fun configDependencyTaskForMavenPublishTasks(project: Project) {
+        project.tasks.whenTaskAdded {
+            if (name.startsWith("publish${MAVEN_PUBLICATION_NAME}PublicationTo")) {
+                dependsOn("${project.path}:assemble")
+            }
+        }
+    }
+
+    private fun configMavenPublishPluginForModule(project: Project) {
+        getModuleSetting(project.name)?.let { moduleSetting ->
+            val publishingExtension =
+                project.extensions.getByType(PublishingExtension::class.java)
+
+            publishingExtension.repositories {
+                mavenLocal()
+                maven {
+                    val releasesRepoUrl = URI(moduleSettingsExtension.mavenReleaseRepoPath)
+                    val snapshotsRepoUrl = URI(moduleSettingsExtension.mavenSnapshotRepoPath)
+                    url = if (moduleSetting.version.endsWith("SNAPSHOT")) snapshotsRepoUrl else releasesRepoUrl
+                }
+            }
+
+            val publications = publishingExtension.publications
+            publications.create(MAVEN_PUBLICATION_NAME, MavenPublication::class.java) {
+                val component = project.components.findByName("default")
+                if (component != null) {
+                    from(project.components.findByName("default"))
+                    groupId = moduleSetting.groupId
+                    artifactId = moduleSetting.artifactId
+                    version = moduleSetting.version
+                } else {
+                    println("Can not obtain component \"default\" from $project, config publication failed.")
+                }
+            }
+        }
+    }
+
+    private fun createOneKeyPublishTask(project: Project) {
+        project.task("oneKeyPublish") {
+            group = "publishing"
+            dependsOn("publishToMavenLocal", "publish")
+        }
+    }
+
+    private fun createModuleSettingsExtension(target: Project): ModuleSettingsExtension =
+        target.extensions.create(BUILDING_ACCELERATOR_EXTENSION, target)
+
+    private fun getModuleSettings() = moduleSettingsExtension.moduleSettings?.toList().orEmpty()
+
+    private fun getModuleSetting(name: String) =
+        moduleSettings.firstOrNull() { it.name == name.convertToCamelNaming().decapitalize(Locale.ROOT) }
+
+    private fun getModuleVariants(project: Project): List<String> {
+        // the libraryVariants needs to be obtained into gradle.projectsEvaluated hook.
+        return project.extensions.findByType(LibraryExtension::class.java)!!.libraryVariants.map { variant ->
+            variant.name
+        }
+    }
+
+    private fun getAppVariants(project: Project): List<String> {
+        // the libraryVariants needs to be obtained into gradle.projectsEvaluated hook.
+        return project.extensions.findByType(AppExtension::class.java)!!.applicationVariants.map { variant ->
+            variant.name
+        }
+    }
+
     private fun loadConfigProperties(target: Project) =
         Properties().apply {
             load(File(target.rootDir.absolutePath + "/local.properties").inputStream())
         }
 
-    private fun getNonWorkspaceProjects(target: Project): List<Project> {
-        return getProjects(target).filterNot {
-            getWorkspaceModulePaths().contains(
-                it.path
-            )
+    private fun splitWorkspaceAndNonWorkspaceProjects(target: Project): Pair<List<Project>, List<Project>> {
+        val workspaceProjects = mutableListOf<Project>()
+        val nonWorkspaceProjects = mutableListOf<Project>()
+
+        getProjects(target).forEach {
+            if( getWorkspaceModulePaths().contains(it.path)) {
+                workspaceProjects.add(it)
+            } else {
+                nonWorkspaceProjects.add(it)
+            }
         }
+        return Pair(workspaceProjects, nonWorkspaceProjects)
     }
 
     private fun getWorkspaceModulePaths() =
@@ -103,15 +236,15 @@ class ModuleBuildingAccelerator : Plugin<Project> {
         (configProperties.getProperty(PLUGIN_ENABLE_SWITCH_KEY) ?: "false").toBoolean()
 
     private fun tryDisableAllTasksForNonWorkspaceProject(project: Project) {
-        if (isReplaceToArtifactsDependencyFromProjectDependency(project)
-        ) {
+        if (isReplaceToArtifactsDependencyFromProjectDependency(project)) {
             project.tasks.forEach { it.enabled = false }
             println("disable tasks for ${project.path}")
         }
     }
 
-    private fun isReplaceToArtifactsDependencyFromProjectDependency(project: Project) =
-        (isAndroidLibraryProject(project) && (!isExistWorkspace(project) || getModuleSetting(project.name)?.useByAar ?: false))
+    private fun isReplaceToArtifactsDependencyFromProjectDependency(project: Project): Boolean {
+       return (isAndroidLibraryProject(project) && !isExistWorkspace(project) && getModuleSetting(project.name)?.useByAar ?: false)
+    }
 
     private fun initMavenPublishingActions(target: Project) {
         getProjects(target).filter { getModuleSetting(it.name) != null }
@@ -125,30 +258,6 @@ class ModuleBuildingAccelerator : Plugin<Project> {
         it.plugins.apply("maven-publish")
     }
 
-    private fun convertDependencyConfiguration(target: Project) {
-        val rootProjectMavenLocalDir = getMavenLocalDirForRootProject(target)
-        println("Artifacts directory: $rootProjectMavenLocalDir")
-        getProjects(target).forEach { project ->
-            project.afterEvaluate {
-                convertProjectDependencyToArtifactDependenciesForProject(project)
-                removeProjectDependencies(project)
-
-                if (isAndroidLibraryProject(project)) {
-                    configAndroidPublishingVariants(project)
-                    tryDisableAllTasksForNonWorkspaceProject(project)
-                }
-            }
-        }
-    }
-
-    private fun configAndroidPublishingVariants(project: Project) {
-        getModuleVariants(project).forEach { libraryVariant ->
-            getLibraryExtension(project).publishing.run {
-                singleVariant(libraryVariant)
-            }
-        }
-    }
-
     private fun getProjects(target: Project) =
         target.subprojects.filterNot { SKIP_PARENT_PROJECT_PATH.contains(it.path) }
 
@@ -158,99 +267,8 @@ class ModuleBuildingAccelerator : Plugin<Project> {
         }
     }
 
-    private fun convertProjectDependencyToArtifactDependenciesForProject(project: Project) {
-        getImplementationConfiguration(project)?.dependencies?.forEach { dependency ->
-            if (dependency is ProjectDependency && !isExistWorkspace(dependency.dependencyProject)) {
-                println("$project depends on ${dependency.dependencyProject}")
-                convertProjectDependencyToArtifactDependenciesWithExistingArtifacts(
-                    project,
-                    dependency.dependencyProject
-                )
-            }
-        }
-    }
-
-    private fun getMavenLocalDirForRootProject(target: Project): String {
-        return "${System.getProperties()["user.home"]}/.m2/repository/${target.groupPath()}"
-    }
-
-    private fun Project.groupPath() = group.toString().replace(".", "/")
-
-    private fun configMavenPublishPluginForModule(project: Project) {
-        getModuleSetting(project.name)?.let { moduleSetting ->
-            moduleSetting.buildVariants.forEach { variant ->
-                val publishingExtension =
-                    project.extensions.getByType(PublishingExtension::class.java)
-
-                publishingExtension.repositories {
-                    mavenLocal()
-                    maven {
-                        val releasesRepoUrl = URI(moduleSettingsExtension.mavenReleaseRepoPath)
-                        val snapshotsRepoUrl = URI(moduleSettingsExtension.mavenSnapshotRepoPath)
-                        url = if (moduleSetting.version.endsWith("SNAPSHOT")) snapshotsRepoUrl else releasesRepoUrl
-                    }
-                }
-
-                val publications = publishingExtension.publications
-                if (publications.findByName(variant) != null) {
-                    println("Publication $variant has been created for $project")
-                    return
-                }
-
-                publications.create(moduleSetting.name + variant.capitalized(), MavenPublication::class.java) {
-                    val component = project.components.findByName(variant)
-                    if (component != null) {
-                        from(project.components.findByName(variant))
-                        groupId = moduleSetting.groupId
-                        artifactId = moduleSetting.artifactId
-                        version = moduleSetting.version
-                    } else {
-                        println("Can not obtain component $variant from $project, config publication failed.")
-                    }
-                }
-
-
-            }
-        }
-    }
-
-
     private fun String.convertToCamelNaming() =
         split(SEPARATOR).joinToString("") { it.toLowerCase(Locale.ROOT).capitalized() }
-
-    private fun configDependencyTaskForMavenPublishTasks(project: Project) {
-        getModuleVariants(project).forEach { variant ->
-            project.tasks.whenTaskAdded {
-                if (name.startsWith(
-                        "publish${
-                            project.name.convertToCamelNaming()
-                        }${variant.capitalized()}PublicationTo"
-                    )
-                ) {
-                    dependsOn("${project.path}:assemble${variant.capitalized()}")
-                }
-            }
-        }
-    }
-
-    // https://developer.android.com/studio/build#sourcesets
-    private fun convertProjectDependencyToArtifactDependenciesWithExistingArtifacts(
-        project: Project,
-        dependencyProject: Project
-    ) {
-        getModuleSetting(dependencyProject.name)?.run {
-            buildVariants.forEach { buildVariant ->
-                println(
-                    "[Converting based on existing artifacts] Convert project" +
-                            " dependency to artifact with ${buildVariant}Implementation(${groupId}:${artifactId}:${version}) for $project"
-                )
-                project.dependencies.add(
-                    "${buildVariant}Implementation",
-                    "${groupId}:${artifactId}:${version}"
-                )
-            }
-        }
-    }
 
     private fun isExistWorkspace(project: Project) = !nonWorkspaceProjects.contains(project)
 
