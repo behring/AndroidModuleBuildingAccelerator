@@ -19,7 +19,7 @@ controls whether use aar file to build is turned on.
         repositories {
             google()
             mavenCentral()
-            // this is config
+            // this is configuration
             mavenLocal()
             maven { url = uri("https://xxx.xxx.xxx/releases") }
             maven { url = uri("https://xxx.xxx.xxx/snapshots") }
@@ -92,7 +92,7 @@ controls whether use aar file to build is turned on.
 
 ## Publishing AAR artifacts
 
-You can publish the modules that be configured in e `modules-publishing-config.gradle` to local or
+You can publish the modules that be configured in `modules-publishing-config.gradle` to local or
 remote maven repository after completing all steps above. The plugin will generated some tasks used
 to publish aar files. Please make sure published the corresponding aar files, otherwise will not
 fetch dependencies.
