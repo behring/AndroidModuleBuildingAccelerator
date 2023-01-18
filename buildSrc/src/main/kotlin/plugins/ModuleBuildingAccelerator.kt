@@ -180,7 +180,8 @@ class ModuleBuildingAccelerator : Plugin<Project> {
                 maven {
                     val releasesRepoUrl = URI(moduleSettingsExtension.mavenReleaseRepoPath)
                     val snapshotsRepoUrl = URI(moduleSettingsExtension.mavenSnapshotRepoPath)
-                    url = if (moduleSetting.version.endsWith("SNAPSHOT")) snapshotsRepoUrl else releasesRepoUrl
+                    url =
+                        if (moduleSetting.version.endsWith("SNAPSHOT")) snapshotsRepoUrl else releasesRepoUrl
                 }
             }
 
@@ -212,7 +213,9 @@ class ModuleBuildingAccelerator : Plugin<Project> {
     private fun getModuleSettings() = moduleSettingsExtension.moduleSettings?.toList().orEmpty()
 
     private fun getModuleSetting(name: String) =
-        moduleSettings.firstOrNull() { it.name == name.convertToCamelNaming().decapitalize(Locale.ROOT) }
+        moduleSettings.firstOrNull() {
+            it.name == name.convertToCamelNaming().decapitalize(Locale.ROOT)
+        }
 
     private fun getModuleVariants(project: Project): List<String> {
         // the libraryVariants needs to be obtained into gradle.projectsEvaluated hook.
@@ -230,7 +233,12 @@ class ModuleBuildingAccelerator : Plugin<Project> {
 
     private fun loadConfigProperties(target: Project) =
         Properties().apply {
-            load(File(target.rootDir.absolutePath + "/local.properties").inputStream())
+            val localProperties = File(target.rootDir.absolutePath + "/local.properties")
+            if (localProperties.exists()) {
+                load(localProperties.inputStream())
+            } else {
+                this.setProperty(PLUGIN_ENABLE_SWITCH_KEY, "true")
+            }
         }
 
     private fun splitWorkspaceAndNonWorkspaceProjects(target: Project): Pair<List<Project>, List<Project>> {
@@ -238,7 +246,7 @@ class ModuleBuildingAccelerator : Plugin<Project> {
         val nonWorkspaceProjects = mutableListOf<Project>()
 
         getProjects(target).forEach {
-            if( getWorkspaceModulePaths().contains(it.path)) {
+            if (getWorkspaceModulePaths().contains(it.path)) {
                 workspaceProjects.add(it)
             } else {
                 nonWorkspaceProjects.add(it)
@@ -262,7 +270,9 @@ class ModuleBuildingAccelerator : Plugin<Project> {
     }
 
     private fun isReplaceToArtifactsDependencyFromProjectDependency(project: Project): Boolean {
-       return (isAndroidLibraryProject(project) && !isExistWorkspace(project) && getModuleSetting(project.name)?.useByAar ?: false)
+        return (isAndroidLibraryProject(project) && !isExistWorkspace(project) && getModuleSetting(
+            project.name
+        )?.useByAar ?: false)
     }
 
     private fun initMavenPublishingActions(target: Project) {
