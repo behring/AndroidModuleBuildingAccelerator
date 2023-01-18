@@ -47,12 +47,12 @@ class ModuleBuildingAccelerator : Plugin<Project> {
 
     override fun apply(target: Project) {
         configProperties = loadConfigProperties(target)
+        moduleSettingsExtension = createModuleSettingsExtension(target)
         if (!isEnablePlugin()) return
         target.gradle.addListener(TimingsListener())
         val (workspaceProjects, nonWorkspaceProjects) = splitWorkspaceAndNonWorkspaceProjects(target)
         this.workspaceProjects = workspaceProjects
         this.nonWorkspaceProjects = nonWorkspaceProjects
-        moduleSettingsExtension = createModuleSettingsExtension(target)
 
         target.afterEvaluate {
             moduleSettings = getModuleSettings()
