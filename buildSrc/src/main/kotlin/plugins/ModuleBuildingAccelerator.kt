@@ -6,6 +6,7 @@ import org.gradle.api.artifacts.Configuration
 import org.gradle.kotlin.dsl.get
 import com.android.build.gradle.AppExtension
 import com.android.build.gradle.LibraryExtension
+import org.gradle.api.artifacts.Dependency
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.publish.maven.MavenPublication
@@ -78,21 +79,39 @@ class ModuleBuildingAccelerator : Plugin<Project> {
     }
 
     private fun convertProjectDependencyToArtifactDependenciesForProject(project: Project) {
+        getApiConfiguration(project)?.dependencies?.forEach { dependency ->
+            tryConvertProjectDependencyToArtifactDependencies(dependency, project, "api")
+        }
+
         getImplementationConfiguration(project)?.dependencies?.forEach { dependency ->
-            if (dependency is ProjectDependency && isReplaceToArtifactsDependencyFromProjectDependency(dependency.dependencyProject)) {
-                println("$project depends on ${dependency.dependencyProject}")
-                convertProjectDependencyToArtifactDependencies(
-                    project,
-                    dependency.dependencyProject
-                )
-            }
+            tryConvertProjectDependencyToArtifactDependencies(dependency, project, "implementation")
         }
     }
+
+    private fun tryConvertProjectDependencyToArtifactDependencies(
+        dependency: Dependency?,
+        project: Project,
+        configration: String
+    ) {
+        if (dependency is ProjectDependency && isReplaceToArtifactsDependencyFromProjectDependency(
+                dependency.dependencyProject
+            )
+        ) {
+            println("$project depends on ${dependency.dependencyProject}")
+            convertProjectDependencyToArtifactDependencies(
+                project,
+                dependency.dependencyProject,
+                configration
+            )
+        }
+    }
+
 
     // https://developer.android.com/studio/build#sourcesets
     private fun convertProjectDependencyToArtifactDependencies(
         project: Project,
-        dependencyProject: Project
+        dependencyProject: Project,
+        configration: String
     ) {
         getModuleSetting(dependencyProject.name)?.run {
             val variants: List<String> = if (isAppProject(project)) {
@@ -104,7 +123,7 @@ class ModuleBuildingAccelerator : Plugin<Project> {
                 return
             }
             variants.forEach { variant ->
-                println("Converting project dependency to artifact with ${variant}Implementation(\"${groupId}:${artifactId}:${version}\") for $project")
+                println("Converting project dependency to artifact with ${variant}${configration.capitalized()}(\"${groupId}:${artifactId}:${version}\") for $project")
 
                 val implementation = project.configurations.maybeCreate("${variant}Implementation")
                 project.dependencies.add(
@@ -265,6 +284,9 @@ class ModuleBuildingAccelerator : Plugin<Project> {
         getImplementationConfiguration(project)?.dependencies?.removeIf {
             (it is ProjectDependency) && isReplaceToArtifactsDependencyFromProjectDependency(it.dependencyProject)
         }
+        getApiConfiguration(project)?.dependencies?.removeIf {
+            (it is ProjectDependency) && isReplaceToArtifactsDependencyFromProjectDependency(it.dependencyProject)
+        }
     }
 
     private fun String.convertToCamelNaming() =
@@ -285,6 +307,14 @@ class ModuleBuildingAccelerator : Plugin<Project> {
     private fun getImplementationConfiguration(project: Project): Configuration? {
         return try {
             project.configurations["implementation"]
+        } catch (ignore: Exception) {
+            null
+        }
+    }
+
+    private fun getApiConfiguration(project: Project): Configuration? {
+        return try {
+            project.configurations["api"]
         } catch (ignore: Exception) {
             null
         }

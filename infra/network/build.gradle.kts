@@ -49,6 +49,7 @@ android {
 }
 
 dependencies {
+    api(projects.infra.analytics)
     api(libs.gson)
     implementation("androidx.activity:activity-compose:1.6.1")
     implementation("androidx.compose.ui:ui:1.3.2")
