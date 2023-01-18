@@ -128,7 +128,7 @@ class ModuleBuildingAccelerator : Plugin<Project> {
                 val implementation = project.configurations.maybeCreate("${variant}Implementation")
                 project.dependencies.add(
                     implementation.name,
-                    "${groupId}:${artifactId}:${version}"
+                    "${groupId}:${artifactId}-${variant}:${version}"
                 ) {
                     workspaceProjects.mapNotNull {
                         getModuleSetting(it.name)
@@ -142,9 +142,9 @@ class ModuleBuildingAccelerator : Plugin<Project> {
 
     private fun configAndroidPublishingVariants(project: Project) {
         if (isAndroidLibraryProject(project)) {
-            getLibraryExtension(project).publishing.run {
-                multipleVariants {
-                    allVariants()
+            getModuleVariants(project).forEach { libraryVariant ->
+                getLibraryExtension(project).publishing.run {
+                    singleVariant(libraryVariant)
                 }
             }
         }
@@ -163,37 +163,51 @@ class ModuleBuildingAccelerator : Plugin<Project> {
     }
 
     private fun configDependencyTaskForMavenPublishTasks(project: Project) {
-        project.tasks.whenTaskAdded {
-            if (name.startsWith("publish${MAVEN_PUBLICATION_NAME}PublicationTo")) {
-                dependsOn("${project.path}:assemble")
+        getModuleVariants(project).forEach { variant ->
+            project.tasks.whenTaskAdded {
+                if (name.startsWith(
+                        "publish${
+                            project.name.convertToCamelNaming()
+                        }${variant.capitalized()}PublicationTo"
+                    )
+                ) {
+                    dependsOn("${project.path}:assemble${variant.capitalized()}")
+                }
             }
         }
     }
 
     private fun configMavenPublishPluginForModule(project: Project) {
         getModuleSetting(project.name)?.let { moduleSetting ->
-            val publishingExtension =
-                project.extensions.getByType(PublishingExtension::class.java)
+            getModuleVariants(project).forEach { variant ->
+                val publishingExtension =
+                    project.extensions.getByType(PublishingExtension::class.java)
 
-            publishingExtension.repositories {
-                mavenLocal()
-                maven {
-                    val releasesRepoUrl = URI(moduleSettingsExtension.mavenReleaseRepoPath)
-                    val snapshotsRepoUrl = URI(moduleSettingsExtension.mavenSnapshotRepoPath)
-                    url = if (moduleSetting.version.endsWith("SNAPSHOT")) snapshotsRepoUrl else releasesRepoUrl
+                publishingExtension.repositories {
+                    mavenLocal()
+                    maven {
+                        val releasesRepoUrl = URI(moduleSettingsExtension.mavenReleaseRepoPath)
+                        val snapshotsRepoUrl = URI(moduleSettingsExtension.mavenSnapshotRepoPath)
+                        url = if (moduleSetting.version.endsWith("SNAPSHOT")) snapshotsRepoUrl else releasesRepoUrl
+                    }
                 }
-            }
 
-            val publications = publishingExtension.publications
-            publications.create(MAVEN_PUBLICATION_NAME, MavenPublication::class.java) {
-                val component = project.components.findByName("default")
-                if (component != null) {
-                    from(project.components.findByName("default"))
-                    groupId = moduleSetting.groupId
-                    artifactId = moduleSetting.artifactId
-                    version = moduleSetting.version
-                } else {
-                    println("Can not obtain component \"default\" from $project, config publication failed.")
+                val publications = publishingExtension.publications
+                if (publications.findByName(variant) != null) {
+                    println("Publication $variant has been created for $project")
+                    return
+                }
+
+                publications.create(moduleSetting.name + variant.capitalized(), MavenPublication::class.java) {
+                    val component = project.components.findByName(variant)
+                    if (component != null) {
+                        from(project.components.findByName(variant))
+                        groupId = moduleSetting.groupId
+                        artifactId = "${moduleSetting.artifactId}-${variant}"
+                        version = moduleSetting.version
+                    } else {
+                        println("Can not obtain component $variant from $project, config publication failed.")
+                    }
                 }
             }
         }
