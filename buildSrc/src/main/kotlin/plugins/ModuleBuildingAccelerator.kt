@@ -23,6 +23,7 @@ class ModuleBuildingAccelerator : Plugin<Project> {
         // All project dependencies will be converted to artifacts dependencies when this value is true.
         // Please make sure you have published all artifacts for relevant projects.
         const val PLUGIN_ENABLE_SWITCH_KEY = "buildingAccelerator.enable"
+        const val PLUGIN_ENABLE_SWITCH_DEFAULT_VALUE= "true"
 
         // This property is used to control which modules will be as a project dependency.
         // if the value is null, all android libraries will be disabled for all tasks.
@@ -237,7 +238,8 @@ class ModuleBuildingAccelerator : Plugin<Project> {
             if (localProperties.exists()) {
                 load(localProperties.inputStream())
             } else {
-                this.setProperty(PLUGIN_ENABLE_SWITCH_KEY, "true")
+                println("Not found a local.properties file, $PLUGIN_ENABLE_SWITCH_KEY=$PLUGIN_ENABLE_SWITCH_DEFAULT_VALUE")
+                this.setProperty(PLUGIN_ENABLE_SWITCH_KEY, PLUGIN_ENABLE_SWITCH_DEFAULT_VALUE)
             }
         }
 
